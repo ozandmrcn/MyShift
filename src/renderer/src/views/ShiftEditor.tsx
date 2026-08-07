@@ -1,0 +1,785 @@
+import React, { useState, useEffect } from 'react'
+import { useShiftStore, ShiftTemplate, Activity, calculateDuration } from '../stores/useShiftStore'
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const EMOJI_OPTIONS = ['💻', '☕', '🍔', '📚', '🏃', '😴', '🚗', '🎮', '🎨', '🎵', '🏢', '💬', '🧹', '🛒', '🏋️', '🧘', '🛌', '🍕', '✏️', '📝', '🎯', '🔬', '🌿', '🏖️']
+const COLOR_OPTIONS = [
+  { key: 'blue',    label: 'Mavi',   bg: 'bg-blue-500',   ring: 'ring-blue-400',   card: 'bg-blue-500/10 border-blue-500/30 text-blue-300' },
+  { key: 'orange',  label: 'Turuncu',bg: 'bg-orange-500', ring: 'ring-orange-400', card: 'bg-orange-500/10 border-orange-500/30 text-orange-300' },
+  { key: 'emerald', label: 'Yeşil',  bg: 'bg-emerald-500',ring: 'ring-emerald-400',card: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' },
+  { key: 'purple',  label: 'Mor',    bg: 'bg-purple-500', ring: 'ring-purple-400', card: 'bg-purple-500/10 border-purple-500/30 text-purple-300' },
+  { key: 'red',     label: 'Kırmızı',bg: 'bg-rose-500',   ring: 'ring-rose-400',   card: 'bg-rose-500/10 border-rose-500/30 text-rose-300' },
+  { key: 'amber',   label: 'Sarı',   bg: 'bg-amber-500',  ring: 'ring-amber-400',  card: 'bg-amber-500/10 border-amber-500/30 text-amber-300' },
+  { key: 'indigo',  label: 'İndigo', bg: 'bg-indigo-500', ring: 'ring-indigo-400', card: 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' },
+]
+const WEEKDAY_NAMES = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt']
+const WEEKDAY_FULL = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
+const SOUND_OPTIONS = [
+  { key: 'default', label: 'Varsayılan' },
+  { key: 'bell',    label: 'Çan' },
+  { key: 'digital', label: 'Dijital' },
+  { key: 'none',    label: 'Sessiz' },
+]
+
+function getColorCard(colorKey: string) {
+  return COLOR_OPTIONS.find(c => c.key === colorKey)?.card || 'bg-slate-500/10 border-slate-500/30 text-slate-300'
+}
+
+// ─── Activity Card ─────────────────────────────────────────────────────────────
+function ActivityCard({
+  act,
+  onEdit,
+  onDelete,
+  onDuplicate,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast
+}: {
+  act: Activity
+  onEdit: () => void
+  onDelete: () => void
+  onDuplicate: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  isFirst: boolean
+  isLast: boolean
+}) {
+  const cardColor = getColorCard(act.color)
+
+  return (
+    <div className={`flex items-stretch gap-0 rounded-xl border overflow-hidden group transition-all duration-150 hover:shadow-md ${cardColor}`}>
+      {/* Left color strip */}
+      <div className={`w-1 flex-shrink-0 ${COLOR_OPTIONS.find(c => c.key === act.color)?.bg || 'bg-slate-500'}`} />
+
+      {/* Main content */}
+      <div className="flex-1 flex items-center gap-3 px-3 py-2.5 min-w-0">
+        {/* Icon */}
+        <span className="text-2xl flex-shrink-0 w-8 text-center leading-none">{act.icon}</span>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-100 truncate">{act.name}</p>
+          <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+            {act.startTime} → {act.endTime}
+            <span className="ml-2 text-slate-500">{act.duration} dk</span>
+          </p>
+          {act.notes && (
+            <p className="text-[10px] text-slate-500 italic truncate mt-0.5">{act.notes}</p>
+          )}
+        </div>
+
+        {/* Notification badge */}
+        {act.notificationEnabled && (
+          <span className="text-[10px] text-slate-500 flex-shrink-0">🔔</span>
+        )}
+      </div>
+
+      {/* Right action buttons — always visible, clean */}
+      <div className="flex flex-col border-l border-white/5 flex-shrink-0">
+        {/* Move up/down */}
+        <button
+          onClick={onMoveUp}
+          disabled={isFirst}
+          className="flex-1 px-2.5 text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-colors disabled:opacity-20 disabled:cursor-not-allowed text-[11px]"
+          title="Yukarı Taşı"
+        >▲</button>
+        <button
+          onClick={onMoveDown}
+          disabled={isLast}
+          className="flex-1 px-2.5 text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-colors disabled:opacity-20 disabled:cursor-not-allowed text-[11px]"
+          title="Aşağı Taşı"
+        >▼</button>
+      </div>
+
+      <div className="flex flex-col border-l border-white/5 flex-shrink-0">
+        <button
+          onClick={onDuplicate}
+          className="flex-1 px-2.5 text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-colors text-[11px]"
+          title="Çoğalt"
+        >⧉</button>
+        <button
+          onClick={onEdit}
+          className="flex-1 px-2.5 text-slate-400 hover:text-blue-300 hover:bg-blue-500/10 transition-colors text-[11px]"
+          title="Düzenle"
+        >✎</button>
+      </div>
+
+      <div className="flex flex-col border-l border-white/5 flex-shrink-0">
+        <button
+          onClick={onDelete}
+          className="h-full px-2.5 text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors text-sm"
+          title="Sil"
+        >✕</button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Activity Modal ────────────────────────────────────────────────────────────
+function ActivityModal({
+  activity,
+  isNew,
+  onSave,
+  onClose
+}: {
+  activity: Activity
+  isNew: boolean
+  onSave: (act: Activity) => void
+  onClose: () => void
+}) {
+  const [form, setForm] = useState<Activity>(activity)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (form.startTime >= form.endTime) {
+      alert('Başlangıç saati bitiş saatinden önce olmalıdır.')
+      return
+    }
+    onSave({ ...form, duration: calculateDuration(form.startTime, form.endTime) })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div
+        className="w-full max-w-lg bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Modal header */}
+        <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-white">
+            {isNew ? '+ Yeni Aktivite' : '✎ Aktiviteyi Düzenle'}
+          </h3>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-sm transition-colors flex items-center justify-center"
+          >✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-4 max-h-[80vh] overflow-y-auto">
+          {/* Name */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+              Aktivite Adı
+            </label>
+            <input
+              type="text"
+              required
+              value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors"
+              placeholder="Örn: Kahvaltı, Çalışma Seansı..."
+            />
+          </div>
+
+          {/* Time inputs */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                Başlangıç Saati
+              </label>
+              <input
+                type="time"
+                required
+                value={form.startTime}
+                onChange={e => setForm({ ...form, startTime: e.target.value })}
+                className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                Bitiş Saati
+              </label>
+              <input
+                type="time"
+                required
+                value={form.endTime}
+                onChange={e => setForm({ ...form, endTime: e.target.value })}
+                className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Duration preview */}
+          {form.startTime && form.endTime && form.startTime < form.endTime && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 rounded-lg border border-white/5">
+              <span className="text-slate-500 text-xs">⏱</span>
+              <span className="text-xs text-slate-400">
+                Süre: <span className="text-slate-200 font-semibold font-mono">
+                  {calculateDuration(form.startTime, form.endTime)} dakika
+                  {' '}({Math.floor(calculateDuration(form.startTime, form.endTime) / 60) > 0 && `${Math.floor(calculateDuration(form.startTime, form.endTime) / 60)} sa `}{calculateDuration(form.startTime, form.endTime) % 60 > 0 && `${calculateDuration(form.startTime, form.endTime) % 60} dk`})
+                </span>
+              </span>
+            </div>
+          )}
+
+          {/* Emoji picker */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+              İkon
+            </label>
+            <div className="grid grid-cols-8 gap-1.5 p-2.5 bg-slate-950 rounded-lg border border-white/5">
+              {EMOJI_OPTIONS.map(emo => (
+                <button
+                  key={emo}
+                  type="button"
+                  onClick={() => setForm({ ...form, icon: emo })}
+                  className={`aspect-square text-xl rounded-lg flex items-center justify-center transition-all hover:scale-110 ${
+                    form.icon === emo
+                      ? 'bg-blue-600 shadow-md shadow-blue-500/30 scale-110'
+                      : 'hover:bg-white/10'
+                  }`}
+                >
+                  {emo}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Color picker */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+              Renk
+            </label>
+            <div className="flex gap-2 flex-wrap">
+              {COLOR_OPTIONS.map(col => (
+                <button
+                  key={col.key}
+                  type="button"
+                  onClick={() => setForm({ ...form, color: col.key })}
+                  title={col.label}
+                  className={`w-7 h-7 rounded-full ${col.bg} border-2 transition-all hover:scale-110 ${
+                    form.color === col.key
+                      ? `ring-2 ${col.ring} ring-offset-1 ring-offset-slate-900 scale-110 border-white/30`
+                      : 'border-transparent'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Notifications */}
+          <div className="p-3 bg-slate-800/40 rounded-xl border border-white/5 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-300">Bildirim</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Aktivite başladığında bildirim gönder</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.notificationEnabled}
+                  onChange={e => setForm({ ...form, notificationEnabled: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
+              </label>
+            </div>
+
+            {form.notificationEnabled && (
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                  Bildirim Sesi
+                </label>
+                <div className="flex gap-1.5">
+                  {SOUND_OPTIONS.map(s => (
+                    <button
+                      key={s.key}
+                      type="button"
+                      onClick={() => setForm({ ...form, notificationSound: s.key })}
+                      className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-colors border ${
+                        form.notificationSound === s.key
+                          ? 'bg-blue-600 border-blue-500 text-white'
+                          : 'bg-slate-900 border-white/5 text-slate-400 hover:bg-slate-800'
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+              Notlar (Opsiyonel)
+            </label>
+            <textarea
+              value={form.notes || ''}
+              onChange={e => setForm({ ...form, notes: e.target.value })}
+              placeholder="Aktivite hakkında not ekleyin..."
+              rows={2}
+              className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-white/5 text-slate-300 rounded-xl text-sm font-medium transition-colors"
+            >
+              İptal
+            </button>
+            <button
+              type="submit"
+              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-blue-500/20"
+            >
+              {isNew ? 'Aktivite Ekle' : 'Kaydet'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main ShiftEditor ──────────────────────────────────────────────────────────
+export default function ShiftEditor() {
+  const {
+    templates,
+    saveTemplate,
+    deleteTemplate,
+    duplicateTemplate,
+    importTemplates,
+    exportTemplates,
+    addTurkishHolidays
+  } = useShiftStore()
+
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null)
+  const [isNewActivity, setIsNewActivity] = useState(false)
+  const [customDateInput, setCustomDateInput] = useState('')
+
+  // Auto-select first template
+  useEffect(() => {
+    if (templates.length > 0 && !selectedId) {
+      setSelectedId(templates[0].id)
+    }
+  }, [templates, selectedId])
+
+  const selected = templates.find(t => t.id === selectedId) || null
+
+  // ── Template handlers ──────────────────────────────────────────────────────
+  const handleCreate = () => {
+    const t: ShiftTemplate = {
+      id: crypto.randomUUID(),
+      name: 'Yeni Vardiya Şablonu',
+      activities: [],
+      weekdays: [1, 2, 3, 4, 5],
+      customDates: [],
+      isActive: false
+    }
+    saveTemplate(t)
+    setSelectedId(t.id)
+  }
+
+  const handleToggleWeekday = (day: number) => {
+    if (!selected) return
+    const weekdays = selected.weekdays.includes(day)
+      ? selected.weekdays.filter(d => d !== day)
+      : [...selected.weekdays, day]
+    saveTemplate({ ...selected, weekdays })
+  }
+
+  const handleAddCustomDate = () => {
+    if (!selected || !customDateInput) return
+    if (selected.customDates?.includes(customDateInput)) return
+    saveTemplate({ ...selected, customDates: [...(selected.customDates || []), customDateInput] })
+    setCustomDateInput('')
+  }
+
+  const handleRemoveCustomDate = (date: string) => {
+    if (!selected) return
+    saveTemplate({ ...selected, customDates: (selected.customDates || []).filter(d => d !== date) })
+  }
+
+  // ── Activity handlers ──────────────────────────────────────────────────────
+  const handleAddActivity = () => {
+    setEditingActivity({
+      id: crypto.randomUUID(),
+      name: 'Yeni Aktivite',
+      icon: '💻',
+      color: 'blue',
+      startTime: '09:00',
+      endTime: '10:00',
+      duration: 60,
+      notificationEnabled: true,
+      notificationSound: 'default',
+      notes: ''
+    })
+    setIsNewActivity(true)
+  }
+
+  const handleEditActivity = (act: Activity) => {
+    setEditingActivity({ ...act })
+    setIsNewActivity(false)
+  }
+
+  const handleSaveActivity = (act: Activity) => {
+    if (!selected) return
+    const activities = isNewActivity
+      ? [...selected.activities, act]
+      : selected.activities.map(a => a.id === act.id ? act : a)
+    saveTemplate({ ...selected, activities })
+    setEditingActivity(null)
+  }
+
+  const handleDeleteActivity = (id: string) => {
+    if (!selected) return
+    saveTemplate({ ...selected, activities: selected.activities.filter(a => a.id !== id) })
+  }
+
+  const handleDuplicateActivity = (act: Activity) => {
+    if (!selected) return
+    const [h, m] = act.endTime.split(':').map(Number)
+    const newStart = act.endTime
+    const endMins = h * 60 + m + act.duration
+    const newEnd = `${Math.floor(endMins / 60).toString().padStart(2, '0')}:${(endMins % 60).toString().padStart(2, '0')}`
+    const dup: Activity = {
+      ...act,
+      id: crypto.randomUUID(),
+      name: `${act.name} (Kopya)`,
+      startTime: newStart,
+      endTime: newEnd,
+      duration: calculateDuration(newStart, newEnd)
+    }
+    saveTemplate({ ...selected, activities: [...selected.activities, dup] })
+  }
+
+  const handleMoveActivity = (index: number, direction: 'up' | 'down') => {
+    if (!selected) return
+    const sorted = [...selected.activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
+    const swapIdx = direction === 'up' ? index - 1 : index + 1
+    if (swapIdx < 0 || swapIdx >= sorted.length) return
+    // Swap start/end times to reorder
+    const a = sorted[index]
+    const b = sorted[swapIdx]
+    const dur_a = a.duration
+    const dur_b = b.duration
+
+    // Recalculate times: swap logical positions
+    let newActivities = [...selected.activities]
+    const idxA = newActivities.findIndex(x => x.id === a.id)
+    const idxB = newActivities.findIndex(x => x.id === b.id)
+
+    // Swap b into a's position and a into b's position
+    const tempStart = a.startTime
+    const tempEnd = a.endTime
+    newActivities[idxA] = { ...a, startTime: b.startTime, endTime: b.endTime, duration: dur_b }
+    newActivities[idxB] = { ...b, startTime: tempStart, endTime: tempEnd, duration: dur_a }
+
+    saveTemplate({ ...selected, activities: newActivities })
+  }
+
+  // ── Import / Export ────────────────────────────────────────────────────────
+  const handleExport = () => {
+    const blob = new Blob([exportTemplates()], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'myshift-templates.json'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async (evt) => {
+      const res = await importTemplates(evt.target?.result as string)
+      alert(res.success ? `${res.count} şablon aktarıldı!` : `Hata: ${res.error}`)
+    }
+    reader.readAsText(file)
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  const sortedActivities = selected
+    ? [...selected.activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
+    : []
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 h-[calc(100vh-6.5rem)]">
+
+      {/* ── LEFT: Template sidebar ── */}
+      <div className="flex flex-col gap-4 overflow-y-auto pr-1">
+
+        {/* Template list */}
+        <div className="fluent-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-slate-200 text-sm">Şablonlarım</h3>
+            <button
+              onClick={handleCreate}
+              className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1.5 rounded-lg transition-colors font-medium"
+            >
+              + Yeni
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            {templates.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setSelectedId(t.id)}
+                className={`w-full text-left p-2.5 rounded-lg border transition-all duration-150 ${
+                  selectedId === t.id
+                    ? 'bg-blue-500/10 border-blue-500/60 text-white'
+                    : 'bg-white/2 border-white/5 text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-sm truncate">{t.name}</span>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                    t.isActive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'
+                  }`}>
+                    {t.isActive ? 'Aktif' : 'Pasif'}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-600 mt-1">
+                  {t.activities.length} Aktivite
+                </p>
+              </button>
+            ))}
+
+            {templates.length === 0 && (
+              <p className="text-xs text-slate-600 text-center py-4">
+                Henüz şablon yok. + Yeni ile başlayın.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Template settings */}
+        {selected && (
+          <div className="fluent-card p-4 flex flex-col gap-4">
+            <h3 className="font-semibold text-slate-200 text-sm border-b border-white/5 pb-2">Şablon Ayarları</h3>
+
+            {/* Name */}
+            <div>
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Ad</label>
+              <input
+                type="text"
+                value={selected.name}
+                onChange={e => saveTemplate({ ...selected, name: e.target.value })}
+                className="w-full bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* Active toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-300 font-medium">Etkin</p>
+                <p className="text-[10px] text-slate-500">Zamanlayıcıda aktif olsun</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selected.isActive}
+                  onChange={e => saveTemplate({ ...selected, isActive: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
+              </label>
+            </div>
+
+            {/* Weekdays */}
+            <div>
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">Günler</label>
+              <div className="flex gap-1 flex-wrap">
+                {[1, 2, 3, 4, 5, 6, 0].map(day => (
+                  <button
+                    key={day}
+                    onClick={() => handleToggleWeekday(day)}
+                    title={WEEKDAY_FULL[day]}
+                    className={`flex-1 min-w-[32px] py-1 rounded-lg text-[10px] font-semibold border transition-all ${
+                      selected.weekdays.includes(day)
+                        ? 'bg-blue-600 border-blue-500 text-white'
+                        : 'bg-slate-900 border-white/5 text-slate-500 hover:bg-slate-800'
+                    }`}
+                  >
+                    {WEEKDAY_NAMES[day]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom dates */}
+            <div className="border-t border-white/5 pt-3 flex flex-col gap-2">
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Özel Tarihler</label>
+              <button
+                onClick={() => addTurkishHolidays(selected.id)}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-1.5 rounded-lg border border-white/5 font-medium transition-colors"
+              >
+                🇹🇷 TR Resmi Tatilleri Ekle
+              </button>
+              <div className="flex gap-1.5">
+                <input
+                  type="date"
+                  value={customDateInput}
+                  onChange={e => setCustomDateInput(e.target.value)}
+                  className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 min-w-0"
+                />
+                <button
+                  onClick={handleAddCustomDate}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2.5 rounded-lg font-medium flex-shrink-0"
+                >
+                  +
+                </button>
+              </div>
+              {(selected.customDates?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                  {selected.customDates?.map(date => (
+                    <span key={date} className="inline-flex items-center gap-1 bg-white/5 border border-white/5 rounded-full px-2 py-0.5 text-[10px] text-slate-300">
+                      {date}
+                      <button onClick={() => handleRemoveCustomDate(date)} className="text-slate-500 hover:text-red-400">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Danger zone */}
+            <div className="flex gap-2 pt-2 border-t border-white/5">
+              <button
+                onClick={() => duplicateTemplate(selected.id)}
+                className="flex-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-lg font-medium"
+              >
+                ⧉ Kopyala
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm('Bu şablonu silmek istediğinize emin misiniz?')) {
+                    deleteTemplate(selected.id)
+                    setSelectedId(null)
+                  }
+                }}
+                className="flex-1 text-xs bg-rose-950/40 hover:bg-rose-900/50 text-rose-400 py-2 rounded-lg border border-rose-900/30 font-medium"
+              >
+                🗑 Sil
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Import / Export */}
+        <div className="fluent-card p-4 flex flex-col gap-2">
+          <button
+            onClick={handleExport}
+            className="w-full text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-lg font-medium"
+          >
+            📥 Dışa Aktar (JSON)
+          </button>
+          <label className="w-full text-xs text-center bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-lg font-medium cursor-pointer block">
+            📤 İçe Aktar (JSON)
+            <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+          </label>
+        </div>
+      </div>
+
+      {/* ── RIGHT: Activity list editor ── */}
+      <div className="fluent-card flex flex-col overflow-hidden">
+
+        {/* Header */}
+        <div className="px-5 py-3.5 border-b border-white/5 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-200">
+              {selected ? selected.name : 'Aktiviteler'}
+            </h2>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {selected
+                ? `${sortedActivities.length} aktivite · Düzenlemek için ✎ butonuna basın`
+                : 'Sol taraftan bir şablon seçin veya oluşturun'}
+            </p>
+          </div>
+          <button
+            disabled={!selected}
+            onClick={handleAddActivity}
+            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-blue-500/20"
+          >
+            + Aktivite Ekle
+          </button>
+        </div>
+
+        {/* Activity list */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {!selected ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-3">
+              <span className="text-5xl">⚙️</span>
+              <p className="text-sm">Sol taraftan bir şablon seçin veya yeni oluşturun.</p>
+            </div>
+          ) : sortedActivities.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-3">
+              <span className="text-5xl">📋</span>
+              <p className="text-sm">Bu şablonda henüz aktivite yok.</p>
+              <button
+                onClick={handleAddActivity}
+                className="mt-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-5 py-2.5 rounded-xl font-semibold transition-colors"
+              >
+                + İlk Aktiviteyi Ekle
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {sortedActivities.map((act, idx) => (
+                <ActivityCard
+                  key={act.id}
+                  act={act}
+                  isFirst={idx === 0}
+                  isLast={idx === sortedActivities.length - 1}
+                  onEdit={() => handleEditActivity(act)}
+                  onDelete={() => {
+                    if (confirm(`"${act.name}" aktivitesini silmek istiyor musunuz?`)) {
+                      handleDeleteActivity(act.id)
+                    }
+                  }}
+                  onDuplicate={() => handleDuplicateActivity(act)}
+                  onMoveUp={() => handleMoveActivity(idx, 'up')}
+                  onMoveDown={() => handleMoveActivity(idx, 'down')}
+                />
+              ))}
+
+              {/* Visual day summary bar */}
+              <div className="mt-4 p-4 bg-slate-900/50 border border-white/5 rounded-xl">
+                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-2">Günlük Zaman Özeti</p>
+                <div className="flex items-center gap-1 h-5 rounded overflow-hidden bg-slate-800">
+                  {sortedActivities.map(act => {
+                    const pct = (act.duration / (24 * 60)) * 100
+                    const colorCls = COLOR_OPTIONS.find(c => c.key === act.color)?.bg || 'bg-slate-500'
+                    return (
+                      <div
+                        key={act.id}
+                        title={`${act.name}: ${act.startTime}–${act.endTime}`}
+                        className={`h-full ${colorCls} opacity-80 hover:opacity-100 transition-opacity`}
+                        style={{ width: `${pct}%`, minWidth: '3px' }}
+                      />
+                    )
+                  })}
+                </div>
+                <div className="flex justify-between mt-1.5">
+                  <span className="text-[10px] text-slate-600">00:00</span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Toplam: {sortedActivities.reduce((s, a) => s + a.duration, 0)} dk
+                    {' '}({Math.round(sortedActivities.reduce((s, a) => s + a.duration, 0) / 60 * 10) / 10} sa)
+                  </span>
+                  <span className="text-[10px] text-slate-600">24:00</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Activity Modal */}
+      {editingActivity && (
+        <ActivityModal
+          activity={editingActivity}
+          isNew={isNewActivity}
+          onSave={handleSaveActivity}
+          onClose={() => setEditingActivity(null)}
+        />
+      )}
+    </div>
+  )
+}
