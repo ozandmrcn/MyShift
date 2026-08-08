@@ -1,16 +1,33 @@
-import React, { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { HashRouter as Router, Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import { useShiftStore } from './stores/useShiftStore'
 import Titlebar from './components/Titlebar'
 import Dashboard from './components/Dashboard'
 import ShiftEditor from './views/ShiftEditor'
+import History from './views/History'
 import SettingsView from './views/Settings'
 
 export default function App() {
   const { loadFromStore, isLoading } = useShiftStore()
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   useEffect(() => {
     loadFromStore()
+  }, [])
+
+  // Tray quick actions — triggered from the system tray context menu
+  useEffect(() => {
+    const off = window.electronAPI?.tray?.onAction?.((action: string) => {
+      const store = useShiftStore.getState()
+      if (action === 'reset-idle') {
+        store.resetIdle()
+      } else if (action === 'complete-shift') {
+        const d = new Date()
+        const today = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+        store.completeShift(today)
+      }
+    })
+    return () => off?.()
   }, [])
 
   if (isLoading) {
@@ -35,7 +52,11 @@ export default function App() {
         {/* Main Layout */}
         <div className="flex-1 flex overflow-hidden">
           {/* Navigation Sidebar */}
-          <nav className="w-16 md:w-56 bg-slate-950/20 border-r border-white/5 flex flex-col justify-between py-6 px-3 flex-shrink-0 select-none">
+          <nav className={`flex flex-col justify-between py-6 px-3 flex-shrink-0 select-none transition-all duration-300 overflow-hidden ${
+            sidebarOpen
+              ? 'w-16 md:w-56 bg-slate-950/20 border-r border-white/5'
+              : 'w-0 px-0 opacity-0 border-r-0'
+          }`}>
             {/* Top Navigation Links */}
             <div className="flex flex-col gap-2">
               <NavLink 
@@ -61,6 +82,18 @@ export default function App() {
                 <span className="text-lg">⚙️</span>
                 <span className="hidden md:inline">Vardiya Editörü</span>
               </NavLink>
+
+              <NavLink 
+                to="/history"
+                className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
+                  isActive 
+                    ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                    : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
+                }`}
+              >
+                <span className="text-lg">🗓️</span>
+                <span className="hidden md:inline">Geçmiş</span>
+              </NavLink>
             </div>
 
             {/* Bottom Settings Link */}
@@ -76,16 +109,37 @@ export default function App() {
                 <span className="text-lg">🛠️</span>
                 <span className="hidden md:inline">Ayarlar</span>
               </NavLink>
+
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-white/4 hover:text-slate-200 transition-all w-full"
+                title="Menüyü Gizle"
+              >
+                <span className="text-lg">◀</span>
+                <span className="hidden md:inline">Menüyü Gizle</span>
+              </button>
             </div>
           </nav>
 
           {/* Core Page Content View */}
           <main className="flex-1 p-6 overflow-hidden relative">
+            {/* Reopen sidebar button when collapsed */}
+            {!sidebarOpen && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="absolute left-2 top-2 z-30 flex items-center gap-2 px-2.5 py-2 rounded-lg bg-slate-800/80 border border-white/10 text-slate-300 text-xs font-medium hover:bg-slate-700/80 transition-colors shadow-lg"
+                title="Menüyü Aç"
+              >
+                <span className="text-sm">☰</span>
+                <span className="hidden md:inline">Menü</span>
+              </button>
+            )}
             {/* Smooth page fade transition container */}
             <div className="h-full overflow-hidden animate-in fade-in duration-300">
               <Routes>
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/editor" element={<ShiftEditor />} />
+                <Route path="/history" element={<History />} />
                 <Route path="/settings" element={<SettingsView />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>

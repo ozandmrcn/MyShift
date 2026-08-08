@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useShiftStore } from '../stores/useShiftStore'
 import { playSound } from '../utils/soundEffects'
 
@@ -86,6 +86,21 @@ export default function SettingsView() {
             checked={settings.minimizeToTray}
             onChange={(e) => updateSettings({ minimizeToTray: e.target.checked })}
             className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+          />
+        </div>
+
+        {/* Auto-minimize to tray on launch */}
+        <div className="flex justify-between items-start py-3 border-b border-white/5">
+          <div>
+            <span className="text-sm font-medium text-slate-200">Açılışta Göster, Sonra Tepsiye Küçült</span>
+            <p className="text-xs text-slate-400 mt-0.5">Uygulama açılışta kısa süre ekranda görünür, ardından sistem tepsisine küçülür. Bu sırada pencereyle etkileşime girerseniz açık kalır.</p>
+          </div>
+          <input 
+            type="checkbox" 
+            checked={settings.autoMinimizeToTray}
+            disabled={!settings.launchWithWindows}
+            onChange={(e) => updateSettings({ autoMinimizeToTray: e.target.checked })}
+            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-30"
           />
         </div>
 

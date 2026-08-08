@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useShiftStore, ShiftTemplate, Activity, calculateDuration } from '../stores/useShiftStore'
+import { playSound } from '../utils/soundEffects'
+import VisualTimeline from '../components/VisualTimeline'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const EMOJI_OPTIONS = ['💻', '☕', '🍔', '📚', '🏃', '😴', '🚗', '🎮', '🎨', '🎵', '🏢', '💬', '🧹', '🛒', '🏋️', '🧘', '🛌', '🍕', '✏️', '📝', '🎯', '🔬', '🌿', '🏖️']
@@ -278,9 +280,19 @@ function ActivityModal({
 
             {form.notificationEnabled && (
               <div>
-                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                  Bildirim Sesi
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                    Bildirim Sesi
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => playSound(form.notificationSound)}
+                    disabled={form.notificationSound === 'none'}
+                    className="text-[10px] font-medium px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    ▶ Test Et
+                  </button>
+                </div>
                 <div className="flex gap-1.5">
                   {SOUND_OPTIONS.map(s => (
                     <button
@@ -435,9 +447,11 @@ export default function ShiftEditor() {
 
   const handleDuplicateActivity = (act: Activity) => {
     if (!selected) return
-    const [h, m] = act.endTime.split(':').map(Number)
     const newStart = act.endTime
-    const endMins = h * 60 + m + act.duration
+    const endMins = Math.min(23 * 60 + 59, (() => {
+      const [h, m] = act.endTime.split(':').map(Number)
+      return h * 60 + m + act.duration
+    })())
     const newEnd = `${Math.floor(endMins / 60).toString().padStart(2, '0')}:${(endMins % 60).toString().padStart(2, '0')}`
     const dup: Activity = {
       ...act,
@@ -499,6 +513,22 @@ export default function ShiftEditor() {
   const sortedActivities = selected
     ? [...selected.activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
     : []
+
+  // Compute the daily summary bar relative to the actual shift span (first start → last end),
+  // so the last activity reaches the right edge of the bar instead of being scaled to 24h.
+  const toSecs = (t: string) => {
+    const [h, m] = t.split(':').map(Number)
+    return h * 3600 + m * 60
+  }
+  const firstAct = sortedActivities[0]
+  const lastAct = sortedActivities[sortedActivities.length - 1]
+  let shiftSpanSecs = 0
+  if (firstAct && lastAct) {
+    let endSecs = toSecs(lastAct.endTime)
+    let startSecs = toSecs(firstAct.startTime)
+    if (endSecs < startSecs) endSecs += 24 * 3600
+    shiftSpanSecs = endSecs - startSecs || 24 * 3600
+  }
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 h-[calc(100vh-6.5rem)]">
@@ -722,6 +752,20 @@ export default function ShiftEditor() {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
+              {/* Visual timeline — drag to move, drag edges to resize, click to edit */}
+              <div className="mb-1">
+                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-2">Görsel Zaman Çizelgesi</p>
+                <VisualTimeline
+                  activities={sortedActivities}
+                  onChange={(acts) => saveTemplate({ ...selected, activities: acts })}
+                  onEdit={handleEditActivity}
+                />
+                <p className="text-[10px] text-slate-600 mt-1.5">
+                  🖱 Bloğu sürükleyerek taşı · kenarlarından çekerek süresini değiştir · tıklayarak düzenle (5 dk hassasiyet)
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
               {sortedActivities.map((act, idx) => (
                 <ActivityCard
                   key={act.id}
@@ -739,31 +783,36 @@ export default function ShiftEditor() {
                   onMoveDown={() => handleMoveActivity(idx, 'down')}
                 />
               ))}
+              </div>
 
               {/* Visual day summary bar */}
               <div className="mt-4 p-4 bg-slate-900/50 border border-white/5 rounded-xl">
                 <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-2">Günlük Zaman Özeti</p>
-                <div className="flex items-center gap-1 h-5 rounded overflow-hidden bg-slate-800">
+                <div className="relative h-5 rounded overflow-hidden bg-slate-800">
                   {sortedActivities.map(act => {
-                    const pct = (act.duration / (24 * 60)) * 100
+                    let actStartSecs = toSecs(act.startTime)
+                    let actEndSecs = toSecs(act.endTime)
+                    if (actEndSecs < actStartSecs) actEndSecs += 24 * 3600
+                    const left = ((actStartSecs - toSecs(firstAct.startTime)) / shiftSpanSecs) * 100
+                    const width = ((actEndSecs - actStartSecs) / shiftSpanSecs) * 100
                     const colorCls = COLOR_OPTIONS.find(c => c.key === act.color)?.bg || 'bg-slate-500'
                     return (
                       <div
                         key={act.id}
                         title={`${act.name}: ${act.startTime}–${act.endTime}`}
-                        className={`h-full ${colorCls} opacity-80 hover:opacity-100 transition-opacity`}
-                        style={{ width: `${pct}%`, minWidth: '3px' }}
+                        className={`absolute top-0 h-full ${colorCls} opacity-80 hover:opacity-100 transition-opacity`}
+                        style={{ left: `${left}%`, width: `${width}%`, minWidth: '3px' }}
                       />
                     )
                   })}
                 </div>
                 <div className="flex justify-between mt-1.5">
-                  <span className="text-[10px] text-slate-600">00:00</span>
+                  <span className="text-[10px] text-slate-600 font-mono">{firstAct.startTime}</span>
                   <span className="text-[10px] text-slate-400 font-mono">
                     Toplam: {sortedActivities.reduce((s, a) => s + a.duration, 0)} dk
                     {' '}({Math.round(sortedActivities.reduce((s, a) => s + a.duration, 0) / 60 * 10) / 10} sa)
                   </span>
-                  <span className="text-[10px] text-slate-600">24:00</span>
+                  <span className="text-[10px] text-slate-600 font-mono">{lastAct.endTime}</span>
                 </div>
               </div>
             </div>

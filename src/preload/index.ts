@@ -14,6 +14,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notification: {
     show: (title: string, body: string, silent?: boolean) => ipcRenderer.send('notification:show', title, body, silent)
   },
+  tray: {
+    updateInfo: (text: string) => ipcRenderer.send('tray:update-info', text),
+    onAction: (callback: (action: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, action: string) => callback(action)
+      ipcRenderer.on('tray-action', listener)
+      return () => ipcRenderer.removeListener('tray-action', listener)
+    }
+  },
   startup: {
     set: (enabled: boolean) => ipcRenderer.invoke('startup:set', enabled),
     get: () => ipcRenderer.invoke('startup:get')

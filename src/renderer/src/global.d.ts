@@ -12,6 +12,10 @@ export interface IElectronAPI {
   notification: {
     show: (title: string, body: string, silent?: boolean) => void
   }
+  tray: {
+    updateInfo: (text: string) => void
+    onAction: (callback: (action: string) => void) => () => void
+  }
   startup: {
     set: (enabled: boolean) => Promise<boolean>
     get: () => Promise<boolean>
@@ -20,6 +24,6 @@ export interface IElectronAPI {
 
 declare global {
   interface Window {
-    electronAPI: IElectronAPI
+    electronAPI?: IElectronAPI
   }
 }

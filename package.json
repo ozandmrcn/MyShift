@@ -13,14 +13,10 @@
     "dist": "npm run build && electron-builder"
   },
   "dependencies": {
-    "date-fns": "^4.1.0",
     "electron-store": "^8.2.0",
-    "framer-motion": "^11.11.17",
-    "lucide-react": "^0.454.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^6.28.0",
-    "zod": "^3.23.8",
     "zustand": "^5.0.1"
   },
   "devDependencies": {
@@ -48,7 +44,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "resources/icon.png"
+      "icon": "resources/icon.ico"
     }
   }
 }

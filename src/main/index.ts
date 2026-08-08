@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, Tray, Menu, Notification } from 'electron'
+import { app, session, BrowserWindow, ipcMain, Tray, Menu, Notification } from 'electron'
 import { join } from 'path'
 import Store from 'electron-store'
 
@@ -7,6 +7,7 @@ const store = new Store()
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+let trayMenu: Menu | null = null
 let isQuitting = false
 
 function createTray(): void {
@@ -26,9 +27,28 @@ function createTray(): void {
 
   const contextMenu = Menu.buildFromTemplate([
     { 
-      label: 'Show MyShift', 
+      id: 'status',
+      label: 'MyShift',
+      enabled: false
+    },
+    { type: 'separator' },
+    { 
+      label: 'Göster', 
       click: () => {
         mainWindow?.show()
+        mainWindow?.focus()
+      } 
+    },
+    { 
+      label: 'Vardiyayı Tamamla', 
+      click: () => {
+        mainWindow?.webContents.send('tray-action', 'complete-shift')
+      } 
+    },
+    { 
+      label: 'Aşımı Sıfırla', 
+      click: () => {
+        mainWindow?.webContents.send('tray-action', 'reset-idle')
       } 
     },
     { type: 'separator' },
@@ -41,6 +61,7 @@ function createTray(): void {
     }
   ])
 
+  trayMenu = contextMenu
   tray.setToolTip('MyShift - Personal Shift Management')
   tray.setContextMenu(contextMenu)
 
@@ -62,9 +83,10 @@ function createWindow(): void {
     frame: false, // Frameless for Fluent Custom Titlebar
     transparent: true,
     backgroundMaterial: 'mica', // Windows 11 Mica backdrop effect
+    icon: join(__dirname, '../../resources/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -76,10 +98,30 @@ function createWindow(): void {
   }
 
   mainWindow.on('ready-to-show', () => {
-    // If startMinimized setting is enabled, hide the window initially
+    // If startMinimized setting is enabled (or launched with --minimized), hide the window initially
     const startMinimized = store.get('settings.startMinimized', false) as boolean
-    if (!startMinimized) {
+    const autoMinimizeToTray = store.get('settings.autoMinimizeToTray', true) as boolean
+    const launchedMinimized = startMinimized || process.argv.includes('--minimized')
+    if (!launchedMinimized) {
       mainWindow?.show()
+      // "Show briefly, then collapse to tray": if the user does not interact with the
+      // window within a few seconds after launch, minimize it to the system tray.
+      if (autoMinimizeToTray && tray) {
+        const shownAt = Date.now()
+        let interacted = false
+        const onFocus = () => {
+          // Ignore the programmatic focus caused by our own show(); count only real
+          // user focus that happens after the initial 200ms.
+          if (Date.now() - shownAt > 200) interacted = true
+        }
+        mainWindow?.on('focus', onFocus)
+        setTimeout(() => {
+          mainWindow?.removeListener('focus', onFocus)
+          if (!interacted && mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+            mainWindow.hide()
+          }
+        }, 4000)
+      }
     } else {
       mainWindow?.hide()
     }
@@ -134,6 +176,19 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     // Set App ID for Windows Native Notifications
     app.setAppUserModelId('com.myshift.app')
+
+    // Content-Security-Policy for the packaged renderer (file://). The dev server
+    // (http://) is unaffected, so HMR keeps working during development.
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws:"
+          ]
+        }
+      })
+    })
 
     createWindow()
     createTray()
@@ -211,14 +266,29 @@ ipcMain.on('notification:show', (_event, title: string, body: string, silent = f
   }
 })
 
+// 3.5 Tray Tooltip Updates (live status from renderer)
+ipcMain.on('tray:update-info', (_event, text: string) => {
+  if (tray) {
+    // Windows tooltips are length-limited (~127 chars); keep it short
+    const label = text ? String(text).slice(0, 120) : 'MyShift - Personal Shift Management'
+    tray.setToolTip(label)
+    // Mirror the live status into the (disabled) first menu row
+    if (trayMenu) {
+      const statusItem = trayMenu.getMenuItemById('status')
+      if (statusItem) {
+        statusItem.label = label
+        tray.setContextMenu(trayMenu)
+      }
+    }
+  }
+})
+
 // 4. Windows Startup Configuration
 ipcMain.handle('startup:set', (_event, enabled: boolean) => {
-  const settings = app.getLoginItemSettings()
   // Config Windows startup
   app.setLoginItemSettings({
     openAtLogin: enabled,
-    path: app.getPath('exe'),
-    args: ['--minimized']
+    path: app.getPath('exe')
   })
   return true
 })

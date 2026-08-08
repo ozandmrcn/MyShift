@@ -1,4 +1,5 @@
 import React from 'react'
+import appIcon from '../../../../resources/icon.png'
 
 export default function Titlebar() {
   const handleMinimize = () => {
@@ -20,7 +21,12 @@ export default function Titlebar() {
     >
       {/* Brand Label */}
       <div className="flex items-center gap-2">
-        <span className="text-sm">📅</span>
+        <img
+          src={appIcon}
+          alt="MyShift"
+          draggable={false}
+          className="w-4 h-4 rounded-[3px] select-none pointer-events-none"
+        />
         <span className="text-xs font-semibold tracking-wider text-slate-300">MYSHIFT</span>
       </div>
 

@@ -1,370 +1,62 @@
-# Dynamic Shift System (MOST IMPORTANT FEATURE)
-
-This application MUST NOT contain any hardcoded work schedule.
-
-The entire shift system must be fully customizable by the user.
-
-Users must be able to create, edit, delete, duplicate, import and export unlimited shift templates.
-
-Examples of templates:
-
-- Weekday Shift
-- Weekend Shift
-- Work From Home
-- Study Day
-- University
-- Freelance
-- Night Shift
-- Holiday
-- Custom
-
-Each template can be assigned to any combination of weekdays:
-
-- Monday
-- Tuesday
-- Wednesday
-- Thursday
-- Friday
-- Saturday
-- Sunday
-
-Examples:
-
-- Monday-Friday
-- Saturday only
-- Tuesday + Thursday
-- Every day
-- Custom dates
-
----
-
-# Visual Shift Editor
-
-The application must include a visual timeline editor similar to Google Calendar or Outlook Calendar.
-
-Users should be able to:
-
-- Create unlimited activities
-- Drag & Drop activities
-- Resize activities by dragging
-- Change start time
-- Change end time
-- Automatically calculate duration
-- Duplicate activities
-- Delete activities
-- Reorder activities
-- Assign colors
-- Assign icons
-- Enable or disable notifications
-- Add optional notes
-
-No activity should be hardcoded.
-
-Everything is created by the user.
-
----
-
-# Activity Model
-
-Every activity contains:
-
-- Name
-- Icon
-- Color
-- Start Time
-- End Time
-- Duration
-- Notification Enabled
-- Notification Sound
-- Optional Notes
-
-Example:
-
-Name:
-Coding
-
-Icon:
-💻
-
-Color:
-Blue
-
-Start:
-07:00
-
-End:
-07:50
-
----
-
-Name:
-Coffee Break
-
-Icon:
-☕
-
-Color:
-Orange
-
-Start:
-07:50
-
-End:
-08:05
-
----
-
-Name:
-Lunch
-
-Icon:
-🍔
-
-Color:
-Green
-
-Start:
-11:30
-
-End:
-12:15
-
----
-
-# Live Shift Engine
-
-The application MUST NOT require manually starting a timer.
-
-Instead, it should always calculate the current activity based on the system clock.
-
-Examples:
-
-If Windows time is 07:22
-
-Current Activity:
-Coding
-
-Remaining:
-28 minutes
-
-Next:
-Coffee Break
-
----
-
-If Windows time is 11:47
-
-Current Activity:
-Lunch
-
-Remaining:
-28 minutes
-
-Next:
-Coding
-
----
-
-If Windows time is 15:51
-
-Current Activity:
-Coding
-
-Remaining:
-9 minutes
-
-Next:
-Shift Finished
-
-The application should automatically detect the correct activity every second.
-
-No manual interaction should be required.
-
----
-
-# Dashboard
-
-The dashboard should always display:
-
-Current Time
-
-Today's Shift
-
-Current Activity
-
-Next Activity
-
-Remaining Time
-
-Progress Bar
-
-Shift Completion %
-
-Today's Timeline
-
-Example:
-
-08:37
-
-Current Activity
-
-💻 Coding
-
-07:50 - 08:40
-
-Remaining
-
-03:12
-
-Next
-
-☕
-
-Coffee Break
-
-08:40 - 08:55
-
-Shift Progress
-
-██████████░░░░░░ 47%
-
----
-
-# Timeline
-
-The timeline should always stay synchronized with the current time.
-
-Completed activities:
-
-✔ Green
-
-Current activity:
-
-🔵 Highlighted
-
-Future activities:
-
-⚪ Gray
-
-Automatically scroll to keep the current activity visible.
-
----
-
-# Notifications
-
-Windows native notifications.
-
-Examples:
-
-"Your shift has started."
-
-"Coding started."
-
-"Coffee Break started."
-
-"Lunch started."
-
-"Activity completed."
-
-"Shift completed."
-
-Support custom notification sounds.
-
----
-
-# Startup
-
-Option to:
-
-- Launch with Windows
-- Start minimized
-- Automatically load today's shift
-- Immediately calculate the current activity
-
-No manual setup should be required after the initial configuration.
-
----
-
-# Goal
-
-This application is NOT a Pomodoro timer.
-
-It is NOT a task manager.
-
-It is NOT a habit tracker.
-
-It is a Personal Shift Management System that simulates a real workday and continuously guides the user through their custom schedule.
-
-# Technical Requirements
-
-The application MUST be built using the following technologies:
-
-- Electron (Desktop Framework)
-- React 19
-- TypeScript
-- Vite
-- Tailwind CSS v4
-- shadcn/ui
-- Framer Motion
-- Electron Store (persistent settings)
-- React Router
-- Lucide React Icons
-- date-fns
-- React Hook Form
-- Zod
-
-State Management:
-
-- Zustand
-
-Notifications:
-
-- Windows Native Notification API
-
-Packaging:
-
-- Electron Builder
-
-Target Platform:
-
-- Windows 11 (Primary)
-- Windows 10 (Secondary)
-
-The application should be designed specifically for Windows and follow Microsoft's Fluent Design principles.
-
-Use:
-
-- Mica Background
-- Acrylic Effects where appropriate
-- Rounded corners
-- Fluent animations
-- Native title bar (or custom Fluent title bar)
-- System Tray support
-- Windows Startup integration
-
-Architecture:
-
-- Modular
-- Component-based
-- Scalable
-- Maintainable
-- Strong TypeScript typing
-- Reusable UI components
-- Clean folder structure
-- Separation of UI and business logic
-
-Everything should work completely offline.
-
-Do NOT use cloud services.
-
-Do NOT require login or account creation.
-
-Do NOT include advertisements.
-
-Do NOT include premium features.
-
-Do NOT include subscriptions.
-
-The project should be production-ready with clean code and best practices.
-
-Whenever there are multiple implementation choices, always choose the solution that provides the best user experience rather than the simplest implementation.
+# MyShift — Personal Shift Management
+
+A privacy-first, offline desktop app for Windows that manages your workday based on your custom shift plan. Everything is computed live from the system clock — no manual timers.
+
+## Features
+
+- **Live shift engine** — current/next activity, remaining time and progress update every second.
+- **Visual timeline editor** — drag blocks to move, drag edges to resize (5-minute snap), click to edit.
+- **Unlimited shift templates** — create, edit, duplicate, delete; assign weekdays, specific dates or Turkish public holidays; JSON import/export.
+- **Idle tracking** — time spent idle between activities is measured and logged daily (never outside an active shift).
+- **Payback** — earn back your idle time by working; finishing payback completes the shift.
+- **End-of-day summary** — start/end, planned vs. worked time, total idle log.
+- **Rewind** — click any activity in the timeline to jump back as if you started it then.
+- **Windows notifications** — shift start, activity transitions, completion; synthesized sounds via Web Audio.
+- **System tray** — live status tooltip plus actions: Show, Complete Shift, Reset Idle, Quit.
+- **History & statistics** — per-day worked/idle/payback for the last 30 days, plus 7-day totals.
+- **Settings** — start with Windows, start minimized, minimize to tray, birthday day-off.
+- **Persistence** — idle/payback counters and daily logs survive restarts (same day); logs are pruned after 90 days.
+- **Fluent design** — Mica background, rounded corners, custom title bar, Windows 10/11 look.
+
+## Getting Started
+
+```bash
+npm install    # install dependencies
+npm run dev    # start in development mode (hot-reload)
+```
+
+## Building
+
+```bash
+npm run build  # production build (out/)
+npm run pack   # unpacked build (dist/)
+npm run dist   # NSIS installer
+```
+
+## Tech Stack
+
+Electron 31 · React 19 · TypeScript · Vite (electron-vite) · Tailwind CSS v4 · Zustand 5 · React Router 6 · electron-store · electron-builder
+
+## Project Structure
+
+```
+src/
+  main/index.ts            Main process: window, tray, notifications, IPC, CSP
+  preload/index.ts         contextBridge API (secure bridge)
+  renderer/src/
+    App.tsx                Root component: navigation, routes, tray actions
+    components/            Dashboard, Timeline, VisualTimeline, Titlebar
+    hooks/                 useLiveShiftEngine (live shift logic)
+    stores/                useShiftStore (Zustand store + persistence)
+    views/                 ShiftEditor, History, Settings
+    utils/                 soundEffects (Web Audio synthesizer)
+```
+
+## Data
+
+Stored as JSON via electron-store in `userData`: `templates`, `settings`, `completedShifts`, `idleState`, `dailyLogs`, `windowBounds`. Idle/payback counters measure real time only while the app is running.
+
+## Known Limitations
+
+- Overnight shifts (e.g. 23:00 – 01:00) are not yet supported.
+- Daily summaries are recorded only while the app is running.
