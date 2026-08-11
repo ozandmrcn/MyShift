@@ -5,7 +5,6 @@ A privacy-first, offline desktop app for Windows that manages your workday based
 ## Features
 
 - **Live shift engine** — current/next activity, remaining time and progress update every second.
-- **Visual timeline editor** — drag blocks to move, drag edges to resize (5-minute snap), click to edit.
 - **Unlimited shift templates** — create, edit, duplicate, delete; assign weekdays, specific dates or Turkish public holidays; JSON import/export.
 - **Idle tracking** — time spent idle between activities is measured and logged daily (never outside an active shift).
 - **Payback** — earn back your idle time by working; finishing payback completes the shift.
@@ -45,7 +44,7 @@ src/
   preload/index.ts         contextBridge API (secure bridge)
   renderer/src/
     App.tsx                Root component: navigation, routes, tray actions
-    components/            Dashboard, Timeline, VisualTimeline, Titlebar
+    components/            Dashboard, Timeline, Titlebar
     hooks/                 useLiveShiftEngine (live shift logic)
     stores/                useShiftStore (Zustand store + persistence)
     views/                 ShiftEditor, History, Settings

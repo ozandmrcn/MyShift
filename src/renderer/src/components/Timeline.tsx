@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLiveShiftEngine, formatRemaining } from '../hooks/useLiveShiftEngine'
+import { useLiveShiftEngine, formatRemaining, timeToSeconds } from '../hooks/useLiveShiftEngine'
 import { useShiftStore, Activity } from '../stores/useShiftStore'
 
 // Format seconds as HH:MM:SS (for the independent payback stopwatch)
@@ -49,9 +49,7 @@ export default function Timeline() {
   const handleRewind = (act: Activity) => {
     const [ah, am] = act.startTime.split(':').map(Number)
     const targetSecs = ah * 3600 + am * 60
-    const [ch, cm] = currentTimeSecs.split(':').map(Number)
-    const realSecs = ch * 3600 + cm * 60
-    setTimeOffset(targetSecs - realSecs)
+    setTimeOffset(targetSecs - timeToSeconds(currentTimeSecs))
     uncompleteShift(currentDateStr)
   }
 

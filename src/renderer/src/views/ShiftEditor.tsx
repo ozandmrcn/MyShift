@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useShiftStore, ShiftTemplate, Activity, calculateDuration } from '../stores/useShiftStore'
 import { playSound } from '../utils/soundEffects'
-import VisualTimeline from '../components/VisualTimeline'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const EMOJI_OPTIONS = ['💻', '☕', '🍔', '📚', '🏃', '😴', '🚗', '🎮', '🎨', '🎵', '🏢', '💬', '🧹', '🛒', '🏋️', '🧘', '🛌', '🍕', '✏️', '📝', '🎯', '🔬', '🌿', '🏖️']
@@ -752,20 +751,6 @@ export default function ShiftEditor() {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {/* Visual timeline — drag to move, drag edges to resize, click to edit */}
-              <div className="mb-1">
-                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-2">Görsel Zaman Çizelgesi</p>
-                <VisualTimeline
-                  activities={sortedActivities}
-                  onChange={(acts) => saveTemplate({ ...selected, activities: acts })}
-                  onEdit={handleEditActivity}
-                />
-                <p className="text-[10px] text-slate-600 mt-1.5">
-                  🖱 Bloğu sürükleyerek taşı · kenarlarından çekerek süresini değiştir · tıklayarak düzenle (5 dk hassasiyet)
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-2">
               {sortedActivities.map((act, idx) => (
                 <ActivityCard
                   key={act.id}
@@ -783,7 +768,6 @@ export default function ShiftEditor() {
                   onMoveDown={() => handleMoveActivity(idx, 'down')}
                 />
               ))}
-              </div>
 
               {/* Visual day summary bar */}
               <div className="mt-4 p-4 bg-slate-900/50 border border-white/5 rounded-xl">

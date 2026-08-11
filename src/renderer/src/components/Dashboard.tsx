@@ -161,9 +161,7 @@ export default function Dashboard() {
   const handleGoToNextActivity = () => {
     if (!nextActivity) return
     const targetSecs = timeToSeconds(nextActivity.startTime)
-    const [ch, cm] = currentTimeSecs.split(':').map(Number)
-    const realSecs = ch * 3600 + cm * 60
-    setTimeOffset(targetSecs - realSecs)
+    setTimeOffset(targetSecs - timeToSeconds(currentTimeSecs))
   }
 
   const handleResetIdle = () => {
@@ -180,9 +178,7 @@ export default function Dashboard() {
       return
     }
     const targetSecs = timeToSeconds(currentActivity.endTime)
-    const [ch, cm] = currentTimeSecs.split(':').map(Number)
-    const realSecs = ch * 3600 + cm * 60
-    setTimeOffset(targetSecs - realSecs)
+    setTimeOffset(targetSecs - timeToSeconds(currentTimeSecs))
   }
 
   return (

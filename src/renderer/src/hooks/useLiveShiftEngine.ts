@@ -70,12 +70,22 @@ export function useLiveShiftEngine() {
   // Tracks manual rewind offset to suppress notifications when user jumps around
   const prevOffset = useRef(timeOffset)
 
-  // Update clock every second
+  // Update clock every second. Also re-sync immediately when the window regains
+  // focus / becomes visible — while hidden in the tray Chromium throttles timers,
+  // so this keeps the countdown, transitions and notifications up to date the
+  // moment the user looks at the app again.
   useEffect(() => {
     const timer = setInterval(() => {
       setTime(new Date())
     }, 1000)
-    return () => clearInterval(timer)
+    const sync = () => setTime(new Date())
+    window.addEventListener('focus', sync)
+    document.addEventListener('visibilitychange', sync)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', sync)
+      document.removeEventListener('visibilitychange', sync)
+    }
   }, [])
 
   const timeString = useMemo(() => {
