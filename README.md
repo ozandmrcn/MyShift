@@ -59,3 +59,7 @@ Stored as JSON via electron-store in `userData`: `templates`, `settings`, `compl
 
 - Overnight shifts (e.g. 23:00 – 01:00) are not yet supported.
 - Daily summaries are recorded only while the app is running.
+
+MyShift is a desktop application for Windows that helps you manage your workday based on your custom shift plan.
+
+Made by Ozan Demircan
