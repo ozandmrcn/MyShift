@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useShiftStore } from '../stores/useShiftStore'
 import type { Settings } from '../stores/useShiftStore'
-import { playSound } from '../utils/soundEffects'
+import { playSound, playReminderSound } from '../utils/soundEffects'
 
 const MONTH_NAMES = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
@@ -67,7 +67,7 @@ function Row({ icon, title, description, right }: { icon: string; title: string;
 }
 
 export default function SettingsView() {
-  const { settings, updateSettings } = useShiftStore()
+  const { settings, updateSettings, clearHistory } = useShiftStore()
   const api = window.electronAPI
 
   // Parse birthday state
@@ -201,6 +201,143 @@ export default function SettingsView() {
             <p className="text-xs text-slate-400 mt-0.5">Açılış, tepsi ve bildirim tercihlerinizi yönetin.</p>
           </div>
         </div>
+
+        {/* Çalışma Modu */}
+        <Section
+          icon="🗓️"
+          title="Çalışma Modu"
+          description="Günlük vardiyanın nasıl işlendiğini seçin"
+        >
+          <Row
+            icon="⚙️"
+            title="Mod"
+            description="MyShift: aktivite şablonlarına göre planlı vardiya. Pay: sabit başlangıç/bitiş saati + günlük mola bütçeleri."
+            right={
+              <div className="flex rounded-lg overflow-hidden border border-white/10 bg-slate-950 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => updateSettings({ mode: 'myshift' })}
+                  className={`px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                    settings.mode === 'myshift' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  MyShift
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateSettings({ mode: 'pay' })}
+                  className={`px-3 py-1.5 text-[11px] font-semibold transition-colors border-l border-white/5 ${
+                    settings.mode === 'pay' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Pay
+                </button>
+              </div>
+            }
+          />
+
+          {settings.mode === 'pay' && (
+            <>
+              <Row
+                icon="🌅"
+                title="Pay Vardiyası"
+                description="Sabit mesai başlangıç ve bitiş saati."
+                right={
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <input
+                      type="time"
+                      value={settings.payShiftStart}
+                      onChange={(e) => updateSettings({ payShiftStart: e.target.value })}
+                      className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                    />
+                    <span className="text-slate-500 text-xs">→</span>
+                    <input
+                      type="time"
+                      value={settings.payShiftEnd}
+                      onChange={(e) => updateSettings({ payShiftEnd: e.target.value })}
+                      className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                }
+              />
+              <Row
+                icon="☕"
+                title="Kısa Mola Bütçesi"
+                description="Çay, kahve ve ihtiyaç molaları için günlük toplam süre (dakika)."
+                right={
+                  <input
+                    type="number"
+                    min={0}
+                    max={480}
+                    value={settings.payShortBreakMin}
+                    onChange={(e) => updateSettings({ payShortBreakMin: Math.max(0, Math.min(480, parseInt(e.target.value, 10) || 0)) })}
+                    className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 text-right"
+                  />
+                }
+              />
+              <Row
+                icon="🍽️"
+                title="Yemek Molası Bütçesi"
+                description="Kahvaltı, öğle ve akşam yemeği molaları için günlük toplam süre (dakika)."
+                right={
+                  <input
+                    type="number"
+                    min={0}
+                    max={480}
+                    value={settings.payMealBreakMin}
+                    onChange={(e) => updateSettings({ payMealBreakMin: Math.max(0, Math.min(480, parseInt(e.target.value, 10) || 0)) })}
+                    className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 text-right"
+                  />
+                }
+              />
+
+              <div className="px-4 py-2.5 bg-white/5 border-b border-white/5">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Mola Hatırlatması</p>
+                <p className="text-[9px] text-slate-600 mt-0.5">Uyarı 1 dakika görünür ve farklı bir ses çalar.</p>
+              </div>
+
+              <Row
+                icon="⏳"
+                title="Tahmini Shift Süresi (dk)"
+                description="Örn. 50 — bu süre aralıksız çalışınca 'mola yapmadın' uyarısı. (0 = kapalı)"
+                right={
+                  <input
+                    type="number"
+                    min={0}
+                    max={480}
+                    value={settings.payWorkReminderMin}
+                    onChange={(e) => updateSettings({ payWorkReminderMin: Math.max(0, Math.min(480, parseInt(e.target.value, 10) || 0)) })}
+                    className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 text-right"
+                  />
+                }
+              />
+              <Row
+                icon="⚠️"
+                title="Tahmini Kısa Mola Süresi (dk)"
+                description="Örn. 15 — planladığın molayı aşınca 'başka molandan yiyorsun' uyarısı. (0 = kapalı)"
+                right={
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <input
+                      type="number"
+                      min={0}
+                      max={480}
+                      value={settings.payBreakReminderMin}
+                      onChange={(e) => updateSettings({ payBreakReminderMin: Math.max(0, Math.min(480, parseInt(e.target.value, 10) || 0)) })}
+                      className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 text-right"
+                    />
+                    <button
+                      onClick={() => playReminderSound()}
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] px-2.5 py-1.5 rounded-lg border border-white/5 font-semibold transition-colors whitespace-nowrap"
+                      title="Hatırlatma sesini dinle"
+                    >
+                      ▶ Ses
+                    </button>
+                  </div>
+                }
+              />
+            </>
+          )}
+        </Section>
 
         {/* Startup & Tray */}
         <Section
@@ -559,6 +696,32 @@ export default function SettingsView() {
               </div>
             }
           />
+        </Section>
+
+        {/* Veri */}
+        <Section
+          icon="🗑️"
+          title="Veri"
+          description="Geçmiş kayıtları tek tuşla temizle"
+        >
+          <div className="p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-300">Geçmişi Temizle</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Tüm günlük kayıtlar ve tamamlanan vardiyalar silinir. Bugünün kaydı korunur.</p>
+              </div>
+              <button
+                onClick={() => {
+                  if (window.confirm('Geçmiş tamamen silinecek. Bu işlem geri alınamaz. Devam edilsin mi?')) {
+                    clearHistory()
+                  }
+                }}
+                className="bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5"
+              >
+                🗑️ Temizle
+              </button>
+            </div>
+          </div>
         </Section>
 
         {/* Footer */}

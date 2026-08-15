@@ -15,6 +15,25 @@ export interface Activity {
   notificationEnabled: boolean
   notificationSound: string // 'default', 'bell', 'digital', 'none'
   notes?: string
+  // "Mola mı?" — when ticked this activity is a break (logged as break time,
+  // never counted as working time).
+  isBreak?: boolean
+}
+
+// Pay-mode break categories (the two budgets the user configures in Settings).
+// Subtype keys are stable identifiers used in breakUsage / DayLog stats.
+export const SHORT_BREAK_SUBTYPES = ['cay', 'kahve', 'ihtiyac'] as const
+export const MEAL_BREAK_SUBTYPES = ['kahvalti', 'ogle', 'aksam'] as const
+export type BreakType = 'short' | 'meal'
+export type BreakSubtype = 'cay' | 'kahve' | 'ihtiyac' | 'kahvalti' | 'ogle' | 'aksam'
+
+// A live (running) break in Pay mode. `overBudget` marks breaks taken after the
+// category budget was already spent — those count as aşım instead of a break.
+export interface PayBreak {
+  type: BreakType
+  subtype: BreakSubtype
+  startedAt: number // Date.now()
+  overBudget: boolean
 }
 
 export interface ShiftTemplate {
@@ -41,13 +60,56 @@ export interface Settings {
   commentBaseUrl: string
   commentApiKey: string
   commentModel: string
+
+  // Shift mode. 'myshift' = the activity-template mode (the classic MyShift behavior).
+  // 'pay' = fixed start/end time with two daily break budgets (kısa mola + yemek molası).
+  mode: 'myshift' | 'pay'
+
+  // Pay mode configuration.
+  payShiftStart: string // "HH:mm"
+  payShiftEnd: string // "HH:mm"
+  payShortBreakMin: number // kısa mola (çay/kahve/ihtiyaç) daily budget in minutes
+  payMealBreakMin: number // yemek molası (kahvaltı/öğle/akşam) daily budget in minutes
+  payWorkReminderMin: number // 0=kapalı — bu kadar dk aralıksız çalışınca mola hatırlatır (örn. 50)
+  payBreakReminderMin: number // 0=kapalı — kısa mola bu kadar dk sürünce "molayı aştın" uyarısı (örn. 15)
 }
 
 export interface DayLog {
   workedSeconds: number
   idleSeconds: number
   paybackSeconds: number
+  breakSeconds: number // planned (in-budget) break time, never counted as work
+  breakCount: number // how many breaks were started
   completed: boolean
+}
+
+// A finished pay-mode break — the detailed "Bugünün Özeti" log. `overBudget`
+// marks breaks taken after the category budget was already spent (aşım).
+export interface BreakLogEntry {
+  id: number
+  type: BreakType
+  subtype: BreakSubtype
+  startedAt: number // Date.now()
+  endedAt: number // Date.now()
+  durationSec: number
+  overBudget: boolean
+}
+
+// A closed idle (aşım) or payback session — logged with exact wall-clock times so
+// the daily summary can show "nerede / ne zaman aşım yapıldı".
+export interface TimeSpanLog {
+  startedAt: number
+  endedAt: number
+  durationSec: number
+}
+
+// Hour-by-hour today's log (keyed "HH:00"). idle/payback are computed against a
+// base cursor recorded at the hour's first write, so they survive app restarts.
+export interface HourLog {
+  idleSeconds: number
+  paybackSeconds: number
+  cursorIdle: number
+  cursorPayback: number
 }
 
 interface ShiftStore {
@@ -71,6 +133,25 @@ interface ShiftStore {
   // active payback subtracts from the aşım counter; its own stopwatch stays independent.
   paybackAccumMs: number // accumulated payback ms (closed sessions)
   paybackStartTs: number | null // Date.now() while a payback session is running (null = not running)
+
+  // Pay-mode breaks. `breakDay` is the date the usage/count belong to (drives the
+  // daily auto-reset). `breakUsage` maps subtype -> minutes already used today.
+  runningBreak: PayBreak | null
+  breakDay: string
+  breakUsage: Partial<Record<BreakSubtype, number>>
+  breakCount: number
+  // When the last break ended (Date.now()) — drives the pay-mode "X dakikadır mola
+  // yapmadın" work-stretch reminder. null = no break taken yet today.
+  lastBreakEndedAt: number | null
+
+  // Pay-mode break reminders (shown as a global banner for ~60s, then auto-dismiss).
+  reminder: { id: number; kind: 'work' | 'break'; message: string } | null
+
+  // Detailed today's logs — the "Bugünün Özeti" tab.
+  breakLog: BreakLogEntry[] // every finished pay-mode break with exact times
+  idleLog: TimeSpanLog[] // closed aşım sessions (when idle started/ended)
+  paybackLog: TimeSpanLog[] // closed payback sessions (when it ran)
+  todayHourly: Record<string, HourLog> // per-hour idle/payback ("HH:00" -> stats)
 
   // Daily history — one snapshot record per date, kept for the History page
   dailyLogs: Record<string, DayLog>
@@ -97,6 +178,13 @@ interface ShiftStore {
   startPayback: () => void
   stopPayback: () => void
   finishPayback: () => void
+  startBreak: (type: BreakType, subtype: BreakSubtype, overBudget: boolean) => void
+  stopBreak: () => void
+  resetBreaks: () => void
+  showReminder: (kind: 'work' | 'break', message: string) => void
+  dismissReminder: () => void
+  clearHistory: () => void
+  setTodayHourly: (hourKey: string, entry: HourLog) => void
   updateDayLog: (dateStr: string, log: Partial<DayLog>) => void
   deleteDayLog: (dateStr: string) => void
   updateAppUsage: (snapshot: AppUsageSnapshot) => void
@@ -112,7 +200,14 @@ const defaultSettings: Settings = {
   commentProvider: 'offline',
   commentBaseUrl: 'http://127.0.0.1:11434',
   commentApiKey: '',
-  commentModel: 'qwen2.5'
+  commentModel: 'qwen2.5',
+  mode: 'myshift',
+  payShiftStart: '07:00',
+  payShiftEnd: '16:00',
+  payShortBreakMin: 30,
+  payMealBreakMin: 30,
+  payWorkReminderMin: 50,
+  payBreakReminderMin: 15
 }
 
 // Helper to calculate duration in minutes between HH:mm and HH:mm
@@ -150,6 +245,39 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     }
   }
 
+  const persistBreak = () => {
+    const s = get()
+    const payload = {
+      runningBreak: s.runningBreak,
+      breakDay: s.breakDay,
+      breakUsage: s.breakUsage,
+      breakCount: s.breakCount,
+      lastBreakEndedAt: s.lastBreakEndedAt
+    }
+    const api = window.electronAPI
+    if (api && api.store) {
+      api.store.set('breakState', payload)
+    } else {
+      localStorage.setItem('breakState', JSON.stringify(payload))
+    }
+  }
+
+  const persistToday = () => {
+    const s = get()
+    const payload = {
+      breakLog: s.breakLog,
+      idleLog: s.idleLog,
+      paybackLog: s.paybackLog,
+      todayHourly: s.todayHourly
+    }
+    const api = window.electronAPI
+    if (api && api.store) {
+      api.store.set('todayDetail', payload)
+    } else {
+      localStorage.setItem('todayDetail', JSON.stringify(payload))
+    }
+  }
+
   return {
   templates: [],
   settings: defaultSettings,
@@ -162,6 +290,16 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   idleLogMs: 0,
   paybackAccumMs: 0,
   paybackStartTs: null,
+  runningBreak: null,
+  breakDay: '',
+  breakUsage: {},
+  breakCount: 0,
+  lastBreakEndedAt: null,
+  reminder: null,
+  breakLog: [],
+  idleLog: [],
+  paybackLog: [],
+  todayHourly: {},
   dailyLogs: {},
   appUsage: { current: null, today: [], todayTotalSeconds: 0 },
 
@@ -217,6 +355,22 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
         const todayStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`
         const sameDay = !!savedIdle && savedIdle.idleDay === todayStr
 
+        const savedBreak = (await api.store.get('breakState', null)) as {
+          runningBreak?: PayBreak | null
+          breakDay?: string
+          breakUsage?: Partial<Record<BreakSubtype, number>>
+          breakCount?: number
+          lastBreakEndedAt?: number | null
+        } | null
+        const breakSameDay = !!savedBreak && savedBreak.breakDay === todayStr
+
+        const savedToday = (await api.store.get('todayDetail', null)) as {
+          breakLog?: BreakLogEntry[]
+          idleLog?: TimeSpanLog[]
+          paybackLog?: TimeSpanLog[]
+          todayHourly?: Record<string, HourLog>
+        } | null
+
         set({ 
           templates: savedTemplates, 
           settings: { ...defaultSettings, ...savedSettings, launchWithWindows: isStartupEnabled },
@@ -228,6 +382,16 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           idleLogMs: sameDay ? savedIdle.idleLogMs ?? 0 : 0,
           paybackAccumMs: sameDay ? savedIdle.paybackAccumMs ?? 0 : 0,
           paybackStartTs: null,
+          runningBreak: breakSameDay ? savedBreak.runningBreak ?? null : null,
+          breakDay: todayStr,
+          breakUsage: breakSameDay ? savedBreak.breakUsage ?? {} : {},
+          breakCount: breakSameDay ? savedBreak.breakCount ?? 0 : 0,
+          lastBreakEndedAt: breakSameDay ? savedBreak.lastBreakEndedAt ?? null : null,
+          reminder: null,
+          breakLog: breakSameDay ? savedToday?.breakLog ?? [] : [],
+          idleLog: sameDay ? savedToday?.idleLog ?? [] : [],
+          paybackLog: sameDay ? savedToday?.paybackLog ?? [] : [],
+          todayHourly: breakSameDay ? savedToday?.todayHourly ?? {} : {},
           appUsage,
           isLoading: false 
         })
@@ -241,6 +405,11 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
         const bNow = new Date()
         const bToday = `${bNow.getFullYear()}-${(bNow.getMonth() + 1).toString().padStart(2, '0')}-${bNow.getDate().toString().padStart(2, '0')}`
         const bSameDay = !!idleParsed && idleParsed.idleDay === bToday
+        const localBreak = localStorage.getItem('breakState')
+        const breakParsed = localBreak ? JSON.parse(localBreak) : null
+        const bBreakSameDay = !!breakParsed && breakParsed.breakDay === bToday
+        const localToday = localStorage.getItem('todayDetail')
+        const todayParsed = localToday ? JSON.parse(localToday) : null
         set({
           templates: localTemplates ? JSON.parse(localTemplates) : [],
           settings: localSettings ? JSON.parse(localSettings) : defaultSettings,
@@ -251,6 +420,16 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           idleLogMs: bSameDay ? idleParsed.idleLogMs ?? 0 : 0,
           paybackAccumMs: bSameDay ? idleParsed.paybackAccumMs ?? 0 : 0,
           paybackStartTs: null,
+          runningBreak: bBreakSameDay ? breakParsed.runningBreak ?? null : null,
+          breakDay: bToday,
+          breakUsage: bBreakSameDay ? breakParsed.breakUsage ?? {} : {},
+          breakCount: bBreakSameDay ? breakParsed.breakCount ?? 0 : 0,
+          lastBreakEndedAt: bBreakSameDay ? breakParsed.lastBreakEndedAt ?? null : null,
+          reminder: null,
+          breakLog: bBreakSameDay ? todayParsed?.breakLog ?? [] : [],
+          idleLog: bSameDay ? todayParsed?.idleLog ?? [] : [],
+          paybackLog: bSameDay ? todayParsed?.paybackLog ?? [] : [],
+          todayHourly: bBreakSameDay ? todayParsed?.todayHourly ?? {} : {},
           isLoading: false
         })
       }
@@ -366,7 +545,8 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
             duration: act.duration || calculateDuration(act.startTime || '09:00', act.endTime || '17:00'),
             notificationEnabled: act.notificationEnabled !== undefined ? act.notificationEnabled : true,
             notificationSound: act.notificationSound || 'default',
-            notes: act.notes || ''
+            notes: act.notes || '',
+            isBreak: !!act.isBreak
           }))
 
           validTemplates.push({
@@ -475,9 +655,13 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     // A running payback session ends together with the shift
     const now = Date.now()
     const newPaybackAccum = paybackAccumMs + (paybackStartTs !== null ? Math.max(0, now - paybackStartTs) : 0)
+    const newPaybackLog = paybackStartTs !== null
+      ? [...get().paybackLog, { startedAt: paybackStartTs, endedAt: now, durationSec: Math.max(1, Math.round((now - paybackStartTs) / 1000)) }]
+      : get().paybackLog
 
-    set({ completedShifts: newCompleted, paybackAccumMs: newPaybackAccum, paybackStartTs: null })
+    set({ completedShifts: newCompleted, paybackAccumMs: newPaybackAccum, paybackStartTs: null, paybackLog: newPaybackLog })
     persistIdle()
+    persistToday()
     get().updateDayLog(dateStr, { completed: true })
 
     const api = window.electronAPI
@@ -520,9 +704,14 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
         idleStartTs: isIdleNow && paybackStartTs === null ? now : null,
         idleDay: day,
         paybackAccumMs: 0,
-        paybackStartTs: null
+        paybackStartTs: null,
+        idleLog: [],
+        paybackLog: [],
+        breakLog: [],
+        todayHourly: {}
       })
       persistIdle()
+      persistToday()
       return
     }
 
@@ -536,8 +725,10 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       const delta = Math.max(0, now - idleStartTs)
       // The log records the gross aşım accrued — it grows even across resets and is
       // never reduced by payback (payback only lowers the live net counter).
-      set({ idleAccumMs: idleAccumMs + delta, idleLogMs: idleLogMs + delta, idleStartTs: null })
+      const newIdleLog = [...get().idleLog, { startedAt: idleStartTs, endedAt: now, durationSec: Math.max(1, Math.round(delta / 1000)) }]
+      set({ idleAccumMs: idleAccumMs + delta, idleLogMs: idleLogMs + delta, idleStartTs: null, idleLog: newIdleLog })
       persistIdle()
+      persistToday()
     }
   },
 
@@ -555,31 +746,41 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     let newIdleAccum = idleAccumMs
     let newIdleLog = idleLogMs
     let newIdleStart = idleStartTs
+    let newIdleLogList = get().idleLog
     if (idleStartTs !== null) {
       const delta = Math.max(0, now - idleStartTs)
       newIdleAccum += delta
       newIdleLog += delta
       newIdleStart = null
+      newIdleLogList = [...newIdleLogList, { startedAt: idleStartTs, endedAt: now, durationSec: Math.max(1, Math.round(delta / 1000)) }]
     }
 
-    set({ idleAccumMs: newIdleAccum, idleLogMs: newIdleLog, idleStartTs: newIdleStart, paybackStartTs: now })
+    set({ idleAccumMs: newIdleAccum, idleLogMs: newIdleLog, idleStartTs: newIdleStart, paybackStartTs: now, idleLog: newIdleLogList })
     persistIdle()
+    persistToday()
   },
 
   stopPayback: () => {
     const now = Date.now()
     const { paybackAccumMs, paybackStartTs } = get()
     if (paybackStartTs === null) return
-    set({ paybackAccumMs: paybackAccumMs + Math.max(0, now - paybackStartTs), paybackStartTs: null })
+    const delta = Math.max(0, now - paybackStartTs)
+    const newPaybackLog = [...get().paybackLog, { startedAt: paybackStartTs, endedAt: now, durationSec: Math.max(1, Math.round(delta / 1000)) }]
+    set({ paybackAccumMs: paybackAccumMs + delta, paybackStartTs: null, paybackLog: newPaybackLog })
     persistIdle()
+    persistToday()
   },
 
   finishPayback: () => {
     const now = Date.now()
     const { paybackAccumMs, paybackStartTs } = get()
     const newAccum = paybackAccumMs + (paybackStartTs !== null ? Math.max(0, now - paybackStartTs) : 0)
-    set({ paybackAccumMs: newAccum, paybackStartTs: null })
+    const newPaybackLog = paybackStartTs !== null
+      ? [...get().paybackLog, { startedAt: paybackStartTs, endedAt: now, durationSec: Math.max(1, Math.round((now - paybackStartTs) / 1000)) }]
+      : get().paybackLog
+    set({ paybackAccumMs: newAccum, paybackStartTs: null, paybackLog: newPaybackLog })
     persistIdle()
+    persistToday()
 
     // Finishing the payback completes today's shift
     const d = new Date()
@@ -587,9 +788,116 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     get().completeShift(day)
   },
 
+  startBreak: (type, subtype, overBudget) => {
+    const now = Date.now()
+    const { runningBreak, breakDay, breakUsage, breakCount, lastBreakEndedAt, breakLog } = get()
+    if (runningBreak) return // already on a break
+
+    const d = new Date()
+    const day = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+    const sameDay = breakDay === day
+
+    set({
+      runningBreak: { type, subtype, startedAt: now, overBudget },
+      breakDay: day,
+      breakUsage: sameDay ? breakUsage : {},
+      breakCount: sameDay ? breakCount : 0,
+      lastBreakEndedAt: sameDay ? lastBreakEndedAt : null,
+      breakLog: sameDay ? breakLog : []
+    })
+    persistBreak()
+    if (!sameDay) persistToday()
+  },
+
+  stopBreak: () => {
+    const now = Date.now()
+    const { runningBreak, breakDay, breakUsage, breakCount } = get()
+    if (!runningBreak) return
+
+    const d = new Date()
+    const day = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+
+    // Break carried over midnight — drop it (does not belong to either day)
+    if (breakDay !== day) {
+      set({ runningBreak: null, breakDay: day, breakUsage: {}, breakCount: 0, lastBreakEndedAt: null, breakLog: [] })
+      persistBreak()
+      persistToday()
+      return
+    }
+
+    const minutes = Math.max(0, Math.round((now - runningBreak.startedAt) / 60000))
+    const newUsage = { ...breakUsage }
+    const newCount = breakCount + 1
+
+    // Over-budget breaks never consume the daily budget (they count as aşım instead)
+    if (!runningBreak.overBudget && minutes > 0) {
+      newUsage[runningBreak.subtype] = (newUsage[runningBreak.subtype] ?? 0) + minutes
+    }
+
+    const breakSeconds = Object.values(newUsage).reduce((a, b) => a + (b ?? 0), 0) * 60
+    const newBreakLog = [...get().breakLog, {
+      id: Date.now(),
+      type: runningBreak.type,
+      subtype: runningBreak.subtype,
+      startedAt: runningBreak.startedAt,
+      endedAt: now,
+      durationSec: Math.max(0, Math.round((now - runningBreak.startedAt) / 1000)),
+      overBudget: runningBreak.overBudget
+    }]
+    set({ runningBreak: null, breakUsage: newUsage, breakCount: newCount, lastBreakEndedAt: now, breakLog: newBreakLog })
+    persistBreak()
+    persistToday()
+
+    // Merge break time into today's DayLog so short breaks are never lost on close
+    get().updateDayLog(day, { breakSeconds, breakCount: newCount })
+  },
+
+  resetBreaks: () => {
+    set({ breakUsage: {}, breakCount: 0, breakLog: [] })
+    persistBreak()
+    persistToday()
+  },
+
+  showReminder: (kind, message) => {
+    set({ reminder: { id: Date.now(), kind, message } })
+  },
+
+  dismissReminder: () => {
+    set({ reminder: null })
+  },
+
+  setTodayHourly: (hourKey, entry) => {
+    const { todayHourly } = get()
+    set({ todayHourly: { ...todayHourly, [hourKey]: entry } })
+    persistToday()
+  },
+
+  clearHistory: () => {
+    const d = new Date()
+    const today = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+    const { dailyLogs } = get()
+    const newLogs: Record<string, DayLog> = {}
+    const newCompleted: string[] = []
+
+    // Keep today's live log (the current day is not "geçmiş"); wipe everything else
+    const todayLog = dailyLogs[today]
+    if (todayLog) newLogs[today] = todayLog
+
+    set({ dailyLogs: newLogs, completedShifts: newCompleted })
+
+    const api = window.electronAPI
+    if (api && api.store) {
+      api.store.set('dailyLogs', newLogs)
+      api.store.set('completedShifts', newCompleted)
+    } else {
+      localStorage.setItem('dailyLogs', JSON.stringify(newLogs))
+      localStorage.setItem('completedShifts', JSON.stringify(newCompleted))
+    }
+  },
+
   updateDayLog: (dateStr, log) => {
     const { dailyLogs } = get()
-    const current = dailyLogs[dateStr] || { workedSeconds: 0, idleSeconds: 0, paybackSeconds: 0, completed: false }
+    const current = dailyLogs[dateStr] || { workedSeconds: 0, idleSeconds: 0, paybackSeconds: 0, breakSeconds: 0, breakCount: 0, completed: false }
     const updated = { ...current, ...log }
     const newLogs = { ...dailyLogs, [dateStr]: updated }
     set({ dailyLogs: newLogs })

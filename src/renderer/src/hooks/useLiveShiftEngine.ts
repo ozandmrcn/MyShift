@@ -20,7 +20,7 @@ export function secondsToHHMM(totalSecs: number): string {
 
 // Helper to format remaining time or overtime
 export function formatRemaining(totalSecs: number, isOvertime = false): string {
-  if (totalSecs <= 0) return '00:00'
+  if (typeof totalSecs !== 'number' || !Number.isFinite(totalSecs) || totalSecs <= 0) return '00:00'
   const h = Math.floor(totalSecs / 3600)
   const m = Math.floor((totalSecs % 3600) / 60)
   const s = totalSecs % 60
@@ -34,11 +34,13 @@ export function formatRemaining(totalSecs: number, isOvertime = false): string {
 }
 
 // Actually worked time (in seconds) from a live clock position: sum of fully elapsed
-// activities plus the partial time spent inside the current one.
+// activities plus the partial time spent inside the current one. Activities flagged
+// as "Mola mı?" (isBreak) are never counted as working time.
 export function computeWorkedSeconds(activities: Activity[], realSecs: number): number {
   let worked = 0
   const sorted = [...activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
   for (const act of sorted) {
+    if (act.isBreak) continue
     const actStartSecs = timeToSeconds(`${act.startTime}:00`)
     const actEndSecs = timeToSeconds(`${act.endTime}:00`)
     if (realSecs >= actEndSecs) {
@@ -143,9 +145,40 @@ export function useLiveShiftEngine() {
     return null
   }, [templates, currentDateStr, currentDayOfWeek, currentDateMMDD, settings.birthday])
 
+  // Pay mode synthesizes a single fixed work block from the Settings times. Breaks
+  // are NOT part of the template — they are started manually from the Dashboard and
+  // tracked by the store (breakUsage / runningBreak).
+  const payTemplate = useMemo<ShiftTemplate | null>(() => {
+    if (settings.mode !== 'pay') return null
+    const startSecs = timeToSeconds(`${settings.payShiftStart}:00`)
+    const endSecs = timeToSeconds(`${settings.payShiftEnd}:00`)
+    if (endSecs <= startSecs) return null
+    return {
+      id: '__pay__',
+      name: 'Pay Vardiyası',
+      activities: [
+        {
+          id: '__pay__work',
+          name: 'Çalışma',
+          icon: '💼',
+          color: 'emerald',
+          startTime: settings.payShiftStart,
+          endTime: settings.payShiftEnd,
+          duration: (endSecs - startSecs) / 60,
+          notificationEnabled: true,
+          notificationSound: 'default'
+        }
+      ],
+      weekdays: [],
+      isActive: true
+    }
+  }, [settings.mode, settings.payShiftStart, settings.payShiftEnd])
+
+  const resolvedTemplate = settings.mode === 'pay' ? payTemplate : activeTemplate
+
   // Get current and next activities
   const engineState = useMemo(() => {
-    if (!activeTemplate || activeTemplate.activities.length === 0) {
+    if (!resolvedTemplate || resolvedTemplate.activities.length === 0) {
       return {
         currentActivity: null,
         nextActivity: null,
@@ -163,7 +196,7 @@ export function useLiveShiftEngine() {
     }
 
     const currentSecs = effectiveSecs
-    const activities = activeTemplate.activities
+    const activities = resolvedTemplate.activities
 
     // Sort activities (already sorted by saveTemplate)
     const sorted = [...activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
@@ -279,7 +312,7 @@ export function useLiveShiftEngine() {
       shiftStartSecs,
       shiftEndSecs
     }
-  }, [activeTemplate, effectiveSecs, completedShifts, currentDateStr])
+  }, [resolvedTemplate, effectiveSecs, completedShifts, currentDateStr])
 
   // ── Aşım (idle) stopwatch ────────────────────────────────────────────────────
   // Lives in the shared store (single source of truth) so Dashboard & Timeline
@@ -296,15 +329,21 @@ export function useLiveShiftEngine() {
   const startPayback = useShiftStore((state) => state.startPayback)
   const stopPayback = useShiftStore((state) => state.stopPayback)
   const finishPayback = useShiftStore((state) => state.finishPayback)
+  const runningBreak = useShiftStore((state) => state.runningBreak)
+  const breakUsage = useShiftStore((state) => state.breakUsage)
+  const breakCount = useShiftStore((state) => state.breakCount)
 
   useEffect(() => {
     // Aşım only accrues while there IS an active shift with activities and the user
     // should be working but isn't (between activities / overtime). If there is no
     // shift for today, the user is simply free — NOT in aşım.
-    const idleNow = !!activeTemplate && activeTemplate.activities.length > 0
-      && !engineState.currentActivity && !engineState.isBeforeShift && !engineState.isShiftFinished
+    // In Pay mode an over-budget break (bütçesi dolmuşken başlatılan mola) is NOT a
+    // real break — it counts as aşım while it runs.
+    const overBudgetBreak = settings.mode === 'pay' && !!runningBreak && runningBreak.overBudget
+    const idleNow = !!resolvedTemplate && resolvedTemplate.activities.length > 0
+      && ((!engineState.currentActivity && !engineState.isBeforeShift && !engineState.isShiftFinished) || overBudgetBreak)
     updateIdle(idleNow)
-  }, [engineState, updateIdle, activeTemplate])
+  }, [engineState, updateIdle, resolvedTemplate, settings.mode, runningBreak])
 
   const idleTotalMs = idleAccumMs + (idleStartTs !== null ? Math.max(0, Date.now() - idleStartTs) : 0)
   const paybackTotalMs = paybackAccumMs + (paybackStartTs !== null ? Math.max(0, Date.now() - paybackStartTs) : 0)
@@ -315,20 +354,83 @@ export function useLiveShiftEngine() {
   const paybackSeconds = Math.floor(paybackTotalMs / 1000)
   const paybackRunning = paybackStartTs !== null
 
-  // Live worked-time estimate (based on the real clock, ignoring manual rewind)
-  const workedSeconds = activeTemplate && activeTemplate.activities.length > 0
-    ? computeWorkedSeconds(activeTemplate.activities, timeToSeconds(timeString))
-    : 0
+  // Today's break seconds (never counted as working time):
+  //  - Pay mode: closed sessions + the live running session (over-budget breaks are
+  //    excluded — they accrue as aşım, not as break time).
+  //  - MyShift: elapsed time inside planned break activities ("Mola mı?").
+  const breakSeconds = useMemo(() => {
+    if (settings.mode === 'pay') {
+      const closed = Object.values(breakUsage).reduce((a, b) => a + (b ?? 0), 0) * 60
+      const runningInBudget = runningBreak && !runningBreak.overBudget
+        ? Math.max(0, Math.floor((Date.now() - runningBreak.startedAt) / 1000))
+        : 0
+      return closed + runningInBudget
+    }
+    const realSecs = timeToSeconds(timeString)
+    const sorted = [...(resolvedTemplate?.activities ?? [])].sort((a, b) => a.startTime.localeCompare(b.startTime))
+    let s = 0
+    for (const act of sorted) {
+      if (!act.isBreak) continue
+      const st = timeToSeconds(`${act.startTime}:00`)
+      const en = timeToSeconds(`${act.endTime}:00`)
+      if (realSecs >= en) {
+        s += act.duration * 60
+      } else if (realSecs >= st) {
+        s += realSecs - st
+        break
+      } else {
+        break
+      }
+    }
+    return s
+    // `time` ticks every second so a live break keeps growing on screen
+  }, [settings.mode, breakUsage, runningBreak, resolvedTemplate, timeString, time])
 
-  // Persist a daily snapshot for the History page (throttled to once a minute)
+  // Live worked-time estimate (based on the real clock, ignoring manual rewind).
+  // Pay mode: shift window minus planned break time. MyShift: sum of elapsed
+  // activities (breaks excluded via computeWorkedSeconds).
+  const workedSeconds = useMemo(() => {
+    if (settings.mode === 'pay') {
+      if (!payTemplate) return 0
+      const startSecs = timeToSeconds(`${settings.payShiftStart}:00`)
+      const endSecs = timeToSeconds(`${settings.payShiftEnd}:00`)
+      const realSecs = timeToSeconds(timeString)
+      const elapsed = Math.max(0, Math.min(endSecs, realSecs) - startSecs)
+      return Math.max(0, elapsed - breakSeconds)
+    }
+    return resolvedTemplate && resolvedTemplate.activities.length > 0
+      ? computeWorkedSeconds(resolvedTemplate.activities, timeToSeconds(timeString))
+      : 0
+  }, [settings.mode, settings.payShiftStart, settings.payShiftEnd, payTemplate, breakSeconds, resolvedTemplate, timeString])
+
+  // Persist a daily snapshot for the History page + the hourly today log for the
+  // "Bugünün Özeti" tab (both throttled to once a minute). Hourly idle/payback are
+  // stored against a base cursor captured at the hour's first write so the values
+  // stay correct across app restarts within the same hour.
   const updateDayLog = useShiftStore((state) => state.updateDayLog)
+  const todayHourly = useShiftStore((state) => state.todayHourly)
+  const setTodayHourly = useShiftStore((state) => state.setTodayHourly)
   const lastDayLogWrite = useRef(0)
   useEffect(() => {
-    const now = Date.now()
-    if (now - lastDayLogWrite.current < 60000) return
-    lastDayLogWrite.current = now
-    updateDayLog(currentDateStr, { workedSeconds, idleSeconds: idleLogSeconds, paybackSeconds })
-  }, [currentDateStr, workedSeconds, idleLogSeconds, paybackSeconds, updateDayLog])
+    const nowMs = Date.now()
+    if (nowMs - lastDayLogWrite.current < 60000) return
+    lastDayLogWrite.current = nowMs
+    updateDayLog(currentDateStr, { workedSeconds, idleSeconds: idleLogSeconds, paybackSeconds, breakSeconds, breakCount })
+
+    const hh = new Date(nowMs).getHours().toString().padStart(2, '0')
+    const hourKey = `${hh}:00`
+    const idleTotalMs = idleLogMs + (idleStartTs !== null ? Math.max(0, nowMs - idleStartTs) : 0)
+    const pbTotalMs = paybackAccumMs + (paybackStartTs !== null ? Math.max(0, nowMs - paybackStartTs) : 0)
+    const cur = todayHourly[hourKey]
+    const baseIdle = cur?.cursorIdle ?? idleTotalMs
+    const basePb = cur?.cursorPayback ?? pbTotalMs
+    setTodayHourly(hourKey, {
+      idleSeconds: Math.floor((idleTotalMs - baseIdle) / 1000),
+      paybackSeconds: Math.floor((pbTotalMs - basePb) / 1000),
+      cursorIdle: baseIdle,
+      cursorPayback: basePb
+    })
+  }, [currentDateStr, workedSeconds, idleLogSeconds, paybackSeconds, breakSeconds, breakCount, updateDayLog, idleLogMs, idleStartTs, paybackAccumMs, paybackStartTs, todayHourly, setTodayHourly])
 
   // Push live status to the tray tooltip (refreshed ~once per second via timeString)
   useEffect(() => {
@@ -352,8 +454,8 @@ export function useLiveShiftEngine() {
     } else {
       status = 'Aşım / Boşta'
     }
-    window.electronAPI.tray.updateInfo(`${activeTemplate?.name || 'MyShift'} • ${clock} • ${status}`)
-  }, [engineState, idleSeconds, timeString, activeTemplate])
+    window.electronAPI.tray.updateInfo(`${resolvedTemplate?.name || 'MyShift'} • ${clock} • ${status}`)
+  }, [engineState, idleSeconds, timeString, resolvedTemplate])
 
   // Handle transitions and notifications (with spam-protection).
   // Dashboard AND Timeline each mount their own engine instance; only the first
@@ -363,7 +465,7 @@ export function useLiveShiftEngine() {
     notificationOwnerActive = true
     const release = () => { notificationOwnerActive = false }
 
-    if (!activeTemplate) return release
+    if (!resolvedTemplate) return release
 
     const realSecs = timeToSeconds(timeString)
     const currentSecs = (realSecs + timeOffset + 86400) % 86400
@@ -417,7 +519,7 @@ export function useLiveShiftEngine() {
       } else if (prevActivityId && !isShiftFinished && !isBeforeShift && !isOvertime) {
         const nextLabel = nextActivity ? `${nextActivity.icon} ${nextActivity.name}` : 'sıradaki aktivite'
         window.electronAPI?.notification?.show(
-          '☕ Mola Vakti',
+          '🧘 Mola Vakti',
           `Aktivite bitti. Sıradaki: ${nextLabel}. Bu ara geçen süre aşım olarak sayılır.`
         )
         playSound('default')
@@ -454,13 +556,13 @@ export function useLiveShiftEngine() {
     }
 
     return release
-  }, [engineState, timeString, activeTemplate, prevActivityId, hasNotifiedShiftStart, hasNotifiedShiftEnd, settings, timeOffset])
+  }, [engineState, timeString, resolvedTemplate, prevActivityId, hasNotifiedShiftStart, hasNotifiedShiftEnd, settings, timeOffset])
 
   return {
     currentTime: timeString.substring(0, 5), // "HH:mm" for display
     currentTimeSecs: timeString, // "HH:mm:ss"
     currentDateStr,
-    activeTemplate,
+    activeTemplate: resolvedTemplate,
     ...engineState,
     remainingTimeStr: formatRemaining(engineState.remainingSeconds, engineState.isOvertime),
     effectiveTime: secondsToHHMM(effectiveSecs),
@@ -469,6 +571,9 @@ export function useLiveShiftEngine() {
     paybackSeconds,
     paybackRunning,
     workedSeconds,
+    breakSeconds,
+    breakCount,
+    breakRunning: runningBreak !== null,
     resetIdle,
     startPayback,
     stopPayback,

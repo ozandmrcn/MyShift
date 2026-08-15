@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLiveShiftEngine, timeToSeconds, formatRemaining } from '../hooks/useLiveShiftEngine'
-import { useShiftStore } from '../stores/useShiftStore'
+import { useShiftStore, type BreakType, type BreakSubtype } from '../stores/useShiftStore'
 import { MotivationContext, MotivationLine, MotivationState, HIGHLIGHT } from '../utils/motivationEngine'
 import { generateComment } from '../utils/commentEngine'
 import TypewriterText from './TypewriterText'
@@ -74,6 +74,173 @@ export function getColors(color: string) {
   }
 }
 
+// ── Pay modu mola kartı ────────────────────────────────────────────────────────
+const BREAK_GROUPS: { type: BreakType; label: string; icon: string; items: { subtype: BreakSubtype; label: string; icon: string }[] }[] = [
+  {
+    type: 'short',
+    label: 'Kısa Mola',
+    icon: '🫖',
+    items: [
+      { subtype: 'cay', label: 'Çay', icon: '🍵' },
+      { subtype: 'kahve', label: 'Kahve', icon: '☕' },
+      { subtype: 'ihtiyac', label: 'İhtiyaç', icon: '🚻' }
+    ]
+  },
+  {
+    type: 'meal',
+    label: 'Yemek Molası',
+    icon: '🍽️',
+    items: [
+      { subtype: 'kahvalti', label: 'Kahvaltı', icon: '🍳' },
+      { subtype: 'ogle', label: 'Öğle Yemeği', icon: '🍲' },
+      { subtype: 'aksam', label: 'Akşam Yemeği', icon: '🍛' }
+    ]
+  }
+]
+
+const SUBTYPE_LABELS: Record<BreakSubtype, { label: string; icon: string }> = {
+  cay: { label: 'Çay', icon: '🍵' },
+  kahve: { label: 'Kahve', icon: '☕' },
+  ihtiyac: { label: 'İhtiyaç Molası', icon: '🚻' },
+  kahvalti: { label: 'Kahvaltı', icon: '🍳' },
+  ogle: { label: 'Öğle Yemeği', icon: '🍲' },
+  aksam: { label: 'Akşam Yemeği', icon: '🍛' }
+}
+
+function BreakCard() {
+  const settings = useShiftStore((s) => s.settings)
+  const runningBreak = useShiftStore((s) => s.runningBreak)
+  const breakUsage = useShiftStore((s) => s.breakUsage)
+  const startBreak = useShiftStore((s) => s.startBreak)
+  const stopBreak = useShiftStore((s) => s.stopBreak)
+  const resetBreaks = useShiftStore((s) => s.resetBreaks)
+
+  // Two-stage inline confirm so a tiny reset button never wipes data by accident
+  const [confirmReset, setConfirmReset] = useState(false)
+  useEffect(() => {
+    if (!confirmReset) return
+    const t = window.setTimeout(() => setConfirmReset(false), 2500)
+    return () => window.clearTimeout(t)
+  }, [confirmReset])
+
+  // Live elapsed for the running break (ticks once a second)
+  const [liveSeconds, setLiveSeconds] = useState(0)
+  useEffect(() => {
+    if (!runningBreak) { setLiveSeconds(0); return }
+    const tick = () => setLiveSeconds(Math.max(0, Math.floor((Date.now() - runningBreak.startedAt) / 1000)))
+    tick()
+    const t = window.setInterval(tick, 1000)
+    return () => window.clearInterval(t)
+  }, [runningBreak])
+
+  const usedOf = (type: BreakType): number => {
+    const subs = BREAK_GROUPS.find(g => g.type === type)!.items.map(i => i.subtype)
+    return subs.reduce((a, s) => a + (breakUsage[s] ?? 0), 0)
+  }
+
+  return (
+    <div className="fluent-card p-5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">🧘 MOLA</span>
+        <button
+          onClick={() => {
+            if (confirmReset) {
+              resetBreaks()
+              setConfirmReset(false)
+            } else {
+              setConfirmReset(true)
+            }
+          }}
+          className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border transition-colors ${
+            confirmReset
+              ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+              : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200'
+          }`}
+          title="Bugünün mola verilerini sıfırla"
+        >
+          {confirmReset ? 'Emin misin?' : '↺ Sıfırla'}
+        </button>
+      </div>
+
+      {runningBreak && (
+        <div className={`mb-3 p-3 rounded-xl border flex items-center justify-between gap-3 ${
+          runningBreak.overBudget ? 'bg-rose-500/10 border-rose-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
+        }`}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-2xl flex-shrink-0">{SUBTYPE_LABELS[runningBreak.subtype].icon}</span>
+            <div className="min-w-0">
+              <p className={`text-sm font-semibold ${runningBreak.overBudget ? 'text-rose-300' : 'text-emerald-300'}`}>
+                {SUBTYPE_LABELS[runningBreak.subtype].label}
+                {runningBreak.overBudget && ' · Bütçe doldu'}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                {runningBreak.overBudget ? 'Bu mola aşım olarak sayılıyor' : 'Bütçe içinde geçiyor'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <span className="font-mono font-semibold text-slate-200 text-lg">{formatRemaining(liveSeconds)}</span>
+            <button
+              onClick={stopBreak}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] px-3 py-1.5 rounded-lg font-semibold border border-white/5 transition-colors whitespace-nowrap"
+            >
+              Molayı Bitir
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3">
+        {BREAK_GROUPS.map((g) => {
+          const budget = g.type === 'short' ? settings.payShortBreakMin : settings.payMealBreakMin
+          const used = usedOf(g.type)
+          const over = used >= budget
+          const left = Math.max(0, budget - used)
+          return (
+            <div key={g.type}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-medium text-slate-400">{g.icon} {g.label}</span>
+                <span className={`text-[11px] font-mono ${over ? 'text-rose-400' : 'text-slate-500'}`}>
+                  {used}/{budget} dk
+                  <span className="ml-1 text-slate-600">· kalan {left}</span>
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5 mb-2">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${over ? 'bg-rose-500' : 'bg-emerald-500/70'}`}
+                  style={{ width: `${budget > 0 ? Math.min(100, (used / budget) * 100) : 0}%` }}
+                />
+              </div>
+              {!runningBreak && (
+                <div className="flex gap-1.5 flex-wrap">
+                  {g.items.map((it) => (
+                    <button
+                      key={it.subtype}
+                      type="button"
+                      onClick={() => startBreak(g.type, it.subtype, over)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-medium transition-all hover:scale-[1.03] ${
+                        over
+                          ? 'bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/20'
+                          : 'bg-slate-800/80 border-white/10 text-slate-200 hover:bg-slate-700'
+                      }`}
+                    >
+                      <span>{it.icon}</span>
+                      <span>{it.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {over && (
+                <p className="text-[9px] text-rose-400/80 mt-1.5">Bütçe doldu — bu bütçeden sonraki molalar aşım olarak sayılır.</p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Motivasyon mesajı ──────────────────────────────────────────────────────────
 export default function Dashboard() {
   const {
@@ -94,20 +261,26 @@ export default function Dashboard() {
     paybackSeconds,
     paybackRunning,
     workedSeconds,
+    breakRunning,
     resetIdle,
     effectiveTime,
     timeOffset
   } = useLiveShiftEngine()
 
   const { completeShift, extendActiveShift, uncompleteShift, setTimeOffset, stopPayback, finishPayback, dailyLogs } = useShiftStore()
+  const mode = useShiftStore((s) => s.settings.mode)
+  const runningBreak = useShiftStore((s) => s.runningBreak)
+  const stopBreak = useShiftStore((s) => s.stopBreak)
 
   const colors = currentActivity ? getColors(currentActivity.color) : null
 
   const [confirmReset, setConfirmReset] = useState(false)
 
-  // Idle (aşım) state
+  // Idle (aşım) state. In Pay mode an over-budget break (bütçesi dolmuşken
+  // başlatılan mola) is NOT a real break — it counts as aşım while it runs.
+  const overBudgetBreak = mode === 'pay' && !!runningBreak && runningBreak.overBudget
   const isIdle = !!activeTemplate && activeTemplate.activities.length > 0
-    && !currentActivity && !isBeforeShift && !isShiftFinished
+    && ((!currentActivity && !isBeforeShift && !isShiftFinished) || overBudgetBreak)
 
   // Payback progress
   const paybackPercent = idleLogSeconds > 0
@@ -131,6 +304,7 @@ export default function Dashboard() {
   if (isShiftFinished) status = { text: 'Tamamlandı', cls: 'text-emerald-400' }
   else if (isBeforeShift) status = { text: 'Başlamadı', cls: 'text-slate-400' }
   else if (paybackRunning) status = { text: 'Payback', cls: 'text-amber-400' }
+  else if (breakRunning && !overBudgetBreak) status = { text: 'Molada', cls: 'text-emerald-400' }
   else if (isIdle) status = { text: 'Aşımda', cls: 'text-amber-400' }
   else if (currentActivity) status = { text: 'Devam Ediyor', cls: 'text-blue-400' }
   else status = { text: '—', cls: 'text-slate-400' }
@@ -278,6 +452,13 @@ export default function Dashboard() {
           </div>
           <div className="text-left md:text-right">
             <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">AKTİF VARDİYA</span>
+            <span className={`ml-2 text-[9px] font-bold px-2 py-0.5 rounded-full border align-middle ${
+              mode === 'pay'
+                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                : 'bg-blue-500/15 border-blue-500/30 text-blue-300'
+            }`}>
+              {mode === 'pay' ? 'PAY MODU' : 'MYSHIFT MODU'}
+            </span>
             <h3 className="text-xl font-medium text-slate-200 mt-1">
               {activeTemplate ? activeTemplate.name : 'Vardiya Atanmadı'}
             </h3>
@@ -303,6 +484,30 @@ export default function Dashboard() {
                 <div>
                   <h1 className="text-2xl font-medium text-slate-300">Bugün İçin Vardiya Yok</h1>
                   <p className="text-sm text-slate-400 mt-1">Şu an serbestsiniz — bu süre aşım sayılmaz. Vardiya planınızı Vardiya Düzenleyici'den etkinleştirebilirsiniz.</p>
+                </div>
+              </div>
+            ) : overBudgetBreak ? (
+              <div className="mt-4">
+                <div className="flex items-start gap-4">
+                  <div className="text-5xl p-4 rounded-2xl border bg-rose-500/10 border-rose-500/30 shadow-lg shadow-rose-500/10">⛔</div>
+                  <div className="flex-1 min-w-0">
+                    <h1 className="text-2xl font-semibold text-rose-300">Bütçe Dışı Mola — Aşım Sayılıyor</h1>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Mola bütçeniz doldu; bu mola çalışma süresinden düşülmez ve aşım olarak kaydedilir.
+                    </p>
+                    <p className="mt-2">
+                      <span className="text-xs text-slate-400">Toplam Aşım:</span>{' '}
+                      <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds)}</span>
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={stopBreak}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
+                  >
+                    ⏹ Molayı Bitir
+                  </button>
                 </div>
               </div>
             ) : currentActivity ? (
@@ -432,12 +637,14 @@ export default function Dashboard() {
                 </div>
                 {isOvertime && (
                   <div className="mt-4 flex justify-end gap-2 flex-wrap">
-                    <button
-                      onClick={handleExtendShift}
-                      className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
-                    >
-                      ⏱ 30 Dk Uzat
-                    </button>
+                    {mode === 'myshift' && (
+                      <button
+                        onClick={handleExtendShift}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
+                      >
+                        ⏱ 30 Dk Uzat
+                      </button>
+                    )}
                     <button
                       onClick={handleCompleteShift}
                       className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-2 rounded-lg font-semibold transition-colors"
@@ -543,12 +750,15 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Right Column - Today's Timeline */}
-      <div className="fluent-card p-6 flex flex-col min-h-[450px]">
-        <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block mb-4">BUGÜNÜN ZAMAN ÇİZELGESİ</span>
-        {/* flex-1 min-h-0 flex flex-col so Timeline's own scroll + undone button works */}
-        <div className="flex-1 min-h-0 flex flex-col">
-          <Timeline />
+      {/* Right Column - Breaks & Today's Timeline */}
+      <div className="flex flex-col gap-6">
+        {mode === 'pay' && <BreakCard />}
+        <div className="fluent-card p-6 flex flex-col min-h-[450px]">
+          <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block mb-4">BUGÜNÜN ZAMAN ÇİZELGESİ</span>
+          {/* flex-1 min-h-0 flex flex-col so Timeline's own scroll + undone button works */}
+          <div className="flex-1 min-h-0 flex flex-col">
+            <Timeline />
+          </div>
         </div>
       </div>
 
@@ -597,8 +807,9 @@ export default function Dashboard() {
               const log = dailyLogs[dateStr]
               const worked = log?.workedSeconds ?? 0
               const idle = log?.idleSeconds ?? 0
+              const brk = log?.breakSeconds ?? 0
               const completed = log?.completed ?? false
-              const hasData = worked > 0 || idle > 0
+              const hasData = worked > 0 || idle > 0 || brk > 0
               const today = i === 6
 
               // Intensity: 0 = no data, 1 = <2h, 2 = 2-4h, 3 = 4-6h, 4 = >6h
@@ -613,7 +824,7 @@ export default function Dashboard() {
                 <div key={dateStr} className="flex flex-col items-center gap-1.5">
                   <span className={`text-[10px] font-medium ${today ? 'text-blue-400' : 'text-slate-600'}`}>{dayLabel}</span>
                   <div
-                    title={hasData ? `Çalışılan: ${Math.floor(worked / 3600)}sa ${Math.floor((worked % 3600) / 60)}dk${idle > 0 ? ` · Aşım: ${Math.floor(idle / 3600)}sa ${Math.floor((idle % 3600) / 60)}dk` : ''}` : 'Veri yok'}
+                    title={hasData ? `Çalışılan: ${Math.floor(worked / 3600)}sa ${Math.floor((worked % 3600) / 60)}dk${idle > 0 ? ` · Aşım: ${Math.floor(idle / 3600)}sa ${Math.floor((idle % 3600) / 60)}dk` : ''}${brk > 0 ? ` · Mola: ${Math.floor(brk / 60)}dk` : ''}` : 'Veri yok'}
                     className={`w-full aspect-square rounded-lg border transition-all duration-200 flex items-center justify-center ${bgCls} ${today ? 'border-blue-500/50' : 'border-white/5'} ${completed ? 'ring-1 ring-emerald-500/50' : ''}`}
                   >
                     {completed && <span className="text-[8px] text-emerald-400">✓</span>}

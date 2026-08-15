@@ -84,3 +84,30 @@ export function playSound(type: string): void {
     console.error('Audio synthesizer error:', error)
   }
 }
+
+// Distinct "ding-dong" for pay-mode break reminders — deliberately different from
+// the default chime, the bell and the digital beep so it reads as an alert.
+export function playReminderSound(): void {
+  try {
+    const ctx = getAudioContext()
+    const now = ctx.currentTime
+    const notes = [
+      { f: 1046.5, at: 0 },    // C6
+      { f: 783.99, at: 0.4 }   // G5
+    ]
+    for (const n of notes) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(n.f, now + n.at)
+      gain.gain.setValueAtTime(0.12, now + n.at)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + n.at + 0.9)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now + n.at)
+      osc.stop(now + n.at + 0.95)
+    }
+  } catch (error) {
+    console.error('Audio synthesizer error:', error)
+  }
+}

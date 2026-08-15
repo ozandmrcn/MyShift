@@ -60,3 +60,21 @@
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.12);
 }
+
+/* Reminder banner auto-dismiss progress bar (shrinks over 60s) */
+@keyframes reminderbar {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* Reminder banner slide-in from the bottom-right */
+@keyframes reminderslide {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

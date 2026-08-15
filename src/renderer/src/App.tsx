@@ -8,6 +8,8 @@ import History from './views/History'
 import SettingsView from './views/Settings'
 import DataView from './views/Data'
 import ObserveView from './views/Observe'
+import TodaySummary from './views/TodaySummary'
+import { useBreakReminders, ReminderBanner } from './components/BreakReminders'
 
 export default function App() {
   const { loadFromStore, isLoading } = useShiftStore()
@@ -19,6 +21,9 @@ export default function App() {
   useEffect(() => {
     loadFromStore()
   }, [])
+
+  // Pay-mode break reminders run globally (any view, even minimized-to-tray).
+  useBreakReminders()
 
   useEffect(() => {
     const poll = async () => {
@@ -64,6 +69,9 @@ export default function App() {
         {/* Native custom title bar */}
         <Titlebar />
 
+        {/* Global pay-mode break reminder banner */}
+        <ReminderBanner />
+
         {/* Main Layout */}
         <div className="flex-1 flex overflow-hidden">
           {/* Navigation Sidebar */}
@@ -75,17 +83,31 @@ export default function App() {
             {/* Top Navigation Links */}
             <div className="flex flex-col gap-2">
               {!recording && (
-                <NavLink 
-                  to="/dashboard"
-                  className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
-                    isActive 
-                      ? 'bg-white/8 text-white border-l-2 border-blue-500' 
-                      : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="text-lg">📊</span>
-                  <span className="hidden md:inline">Dashboard</span>
-                </NavLink>
+                <>
+                  <NavLink 
+                    to="/today"
+                    className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
+                      isActive 
+                        ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                        : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="text-lg">📋</span>
+                    <span className="hidden md:inline">Bugünün Özeti</span>
+                  </NavLink>
+
+                  <NavLink 
+                    to="/dashboard"
+                    className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
+                      isActive 
+                        ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                        : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="text-lg">📊</span>
+                    <span className="hidden md:inline">Dashboard</span>
+                  </NavLink>
+                </>
               )}
 
               <NavLink 
@@ -191,13 +213,14 @@ export default function App() {
                   </>
                 ) : (
                   <>
+                    <Route path="/today" element={<TodaySummary />} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/observe" element={<ObserveView />} />
                     <Route path="/editor" element={<ShiftEditor />} />
                     <Route path="/history" element={<History />} />
                     <Route path="/data" element={<DataView />} />
                     <Route path="/settings" element={<SettingsView />} />
-                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="*" element={<Navigate to="/today" replace />} />
                   </>
                 )}
               </Routes>

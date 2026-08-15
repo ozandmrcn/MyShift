@@ -48,7 +48,7 @@ export default function History() {
 
   const entries = Object.entries(dailyLogs)
     .map(([date, log]) => ({ date, ...log }))
-    .filter(e => e.workedSeconds > 0 || e.idleSeconds > 0 || e.paybackSeconds > 0)
+    .filter(e => e.workedSeconds > 0 || e.idleSeconds > 0 || e.paybackSeconds > 0 || (e.breakSeconds ?? 0) > 0)
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 30)
 
@@ -64,15 +64,17 @@ export default function History() {
       worked: acc.worked + e.workedSeconds,
       idle: acc.idle + e.idleSeconds,
       payback: acc.payback + e.paybackSeconds,
+      breaks: acc.breaks + (e.breakSeconds ?? 0),
       completed: acc.completed + (e.completed ? 1 : 0)
     }),
-    { worked: 0, idle: 0, payback: 0, completed: 0 }
+    { worked: 0, idle: 0, payback: 0, breaks: 0, completed: 0 }
   )
 
   const tiles = [
     { key: 'worked', label: 'Çalışılan Süre', value: formatRemaining(weekTotals.worked), icon: '💪', accent: false },
     { key: 'idle', label: 'Toplam Aşım', value: formatRemaining(weekTotals.idle), icon: '📈', accent: weekTotals.idle > 0 },
     { key: 'payback', label: 'Geri Ödenen', value: formatRemaining(weekTotals.payback), icon: '🔄', accent: false },
+    { key: 'breaks', label: 'Mola', value: formatRemaining(weekTotals.breaks), icon: '🧘', accent: false },
     { key: 'done', label: 'Tamamlanan Gün', value: `${weekTotals.completed}`, icon: '🎉', accent: false }
   ]
 
@@ -105,7 +107,7 @@ export default function History() {
             <p className="text-xs text-slate-400 mt-1">Uygulama açıkken kaydedilen günlük özetler — son 7 günün toplamları.</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {tiles.map(t => (
             <div key={t.key} className="rounded-xl border border-white/5 bg-white/2 p-4">
               <p className="text-[10px] text-slate-500 flex items-center gap-1.5">
@@ -300,6 +302,13 @@ export default function History() {
                       <div>
                         <p className="text-[9px] text-slate-500 uppercase tracking-wider">Ödenen</p>
                         <p className="text-sm font-semibold font-mono text-emerald-300">{formatRemaining(e.paybackSeconds)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-slate-500 uppercase tracking-wider">Mola</p>
+                        <p className="text-sm font-semibold font-mono text-orange-300">
+                          {formatRemaining(e.breakSeconds ?? 0)}
+                          {(e.breakCount ?? 0) > 0 && <span className="text-[9px] text-slate-500 ml-1">×{e.breakCount ?? 0}</span>}
+                        </p>
                       </div>
                       <span
                         className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border whitespace-nowrap ${

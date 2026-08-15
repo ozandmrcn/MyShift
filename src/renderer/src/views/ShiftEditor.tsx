@@ -75,6 +75,9 @@ function ActivityCard({
           <p className="text-[11px] text-slate-400 font-mono mt-0.5">
             {act.startTime} → {act.endTime}
             <span className="ml-2 text-slate-500">{act.duration} dk</span>
+            {act.isBreak && (
+              <span className="ml-2 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-300">🧘 Mola</span>
+            )}
           </p>
           {act.notes && (
             <p className="text-[10px] text-slate-500 italic truncate mt-0.5">{act.notes}</p>
@@ -310,6 +313,23 @@ function ActivityModal({
             </div>
           </div>
 
+          {/* Mola mı? */}
+          <div className="p-3 bg-slate-800/40 rounded-xl border border-white/5 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-300">🧘 Mola mı?</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Mola sayılır, çalışma süresine eklenmez</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!form.isBreak}
+                onChange={e => setForm({ ...form, isBreak: e.target.checked })}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500" />
+            </label>
+          </div>
+
           {/* Notifications */}
           <div className="p-3 bg-slate-800/40 rounded-xl border border-white/5 flex flex-col gap-3">
             <div className="flex items-center justify-between">
@@ -410,6 +430,7 @@ export default function ShiftEditor() {
     exportTemplates,
     addTurkishHolidays
   } = useShiftStore()
+  const mode = useShiftStore((s) => s.settings.mode)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null)
@@ -471,7 +492,8 @@ export default function ShiftEditor() {
       duration: 60,
       notificationEnabled: true,
       notificationSound: 'default',
-      notes: ''
+      notes: '',
+      isBreak: false
     })
     setIsNewActivity(true)
   }
@@ -585,6 +607,12 @@ export default function ShiftEditor() {
 
       {/* ── LEFT: Template sidebar ── */}
       <div className="flex flex-col gap-4 overflow-y-auto pr-1">
+
+        {mode === 'pay' && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[11px] text-amber-200 leading-relaxed">
+            <span className="font-semibold">💼 Pay Modu aktif.</span> Bu modda sabit başlangıç/bitiş saati ve mola bütçeleri kullanılır; aşağıdaki şablonlar uygulanmaz. Mola kaydı Panel sayfasından yapılır.
+          </div>
+        )}
 
         {/* Template list */}
         <div className="fluent-card p-4">
