@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useLiveShiftEngine, timeToSeconds, formatRemaining } from '../hooks/useLiveShiftEngine'
 import { useShiftStore } from '../stores/useShiftStore'
+import { MotivationContext, MotivationLine, MotivationState, HIGHLIGHT } from '../utils/motivationEngine'
+import { generateComment } from '../utils/commentEngine'
+import TypewriterText from './TypewriterText'
 import Timeline from './Timeline'
 
 export function getColors(color: string) {
@@ -71,6 +74,7 @@ export function getColors(color: string) {
   }
 }
 
+// ── Motivasyon mesajı ──────────────────────────────────────────────────────────
 export default function Dashboard() {
   const {
     currentTime,
@@ -95,23 +99,22 @@ export default function Dashboard() {
     timeOffset
   } = useLiveShiftEngine()
 
-  const { completeShift, extendActiveShift, uncompleteShift, setTimeOffset, stopPayback, finishPayback } = useShiftStore()
+  const { completeShift, extendActiveShift, uncompleteShift, setTimeOffset, stopPayback, finishPayback, dailyLogs } = useShiftStore()
 
   const colors = currentActivity ? getColors(currentActivity.color) : null
 
   const [confirmReset, setConfirmReset] = useState(false)
 
-  // Idle (aşım) state — only inside an active shift with activities, between activities
-  // or in overtime. With no shift for today the user is simply free, NOT in aşım.
+  // Idle (aşım) state
   const isIdle = !!activeTemplate && activeTemplate.activities.length > 0
     && !currentActivity && !isBeforeShift && !isShiftFinished
 
-  // Payback progress — what fraction of today's gross aşım log has been paid back
+  // Payback progress
   const paybackPercent = idleLogSeconds > 0
     ? Math.min(100, (Math.max(0, idleLogSeconds - idleSeconds) / idleLogSeconds) * 100)
     : 0
 
-  // ── Day summary calculations (always based on the LIVE clock) ───────────────
+  // Day summary
   const sortedActivities = activeTemplate
     ? [...activeTemplate.activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
     : []
@@ -121,7 +124,6 @@ export default function Dashboard() {
   const isCurrentLast = !!currentActivity && sortedActivities.length > 0
     && sortedActivities[sortedActivities.length - 1].id === currentActivity.id
 
-  // Live position (ignores manual completion & rewind so the summary reflects reality)
   const realSecs = timeToSeconds(currentTimeSecs)
   const shiftEndSecs = sortedActivities.length ? timeToSeconds(sortedActivities[sortedActivities.length - 1].endTime) : 0
 
@@ -142,51 +144,111 @@ export default function Dashboard() {
     { key: 'remaining', label: 'Kalan Süre', value: realSecs >= shiftEndSecs ? '—' : formatRemaining(Math.max(0, shiftEndSecs - realSecs)), icon: '⏱', accent: false }
   ]
 
-  const handleCompleteShift = () => {
-    completeShift(currentDateStr)
-  }
+  // Weekly heatmap — last 7 days from dailyLogs
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (6 - i))
+    return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+  })
+  const DAY_SHORT = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt']
 
-  const handleUncompleteShift = () => {
-    uncompleteShift(currentDateStr)
-  }
-
-  const handleExtendShift = () => {
-    if (activeTemplate) {
-      extendActiveShift(activeTemplate.id, 30) // extend by 30 mins
-    }
-  }
-
-  // While idle (aşım), jump straight to the next activity's start.
-  // Only the real time spent idle is counted as aşım.
+  const handleCompleteShift = () => { completeShift(currentDateStr) }
+  const handleUncompleteShift = () => { uncompleteShift(currentDateStr) }
+  const handleExtendShift = () => { if (activeTemplate) extendActiveShift(activeTemplate.id, 30) }
   const handleGoToNextActivity = () => {
     if (!nextActivity) return
     const targetSecs = timeToSeconds(nextActivity.startTime)
     setTimeOffset(targetSecs - timeToSeconds(currentTimeSecs))
   }
-
-  const handleResetIdle = () => {
-    setConfirmReset(false)
-    resetIdle()
-  }
-
-  // Complete the current activity — jumps to its end so the next one becomes active.
-  // On the last activity it completes the whole shift.
+  const handleResetIdle = () => { setConfirmReset(false); resetIdle() }
   const handleCompleteCurrentActivity = () => {
     if (!currentActivity) return
-    if (isCurrentLast) {
-      completeShift(currentDateStr)
-      return
-    }
+    if (isCurrentLast) { completeShift(currentDateStr); return }
     const targetSecs = timeToSeconds(currentActivity.endTime)
     setTimeOffset(targetSecs - timeToSeconds(currentTimeSecs))
   }
 
+  // ── Motivation engine (context-aware "AI" one-liner) ────────────────────────
+  // State classification mirrors the old getMotivationMessage priority order.
+  const state: MotivationState = !activeTemplate || activeTemplate.activities.length === 0
+    ? 'no-shift'
+    : isShiftFinished ? 'finished'
+    : paybackRunning ? 'payback'
+    : isOvertime ? 'overtime'
+    : isIdle ? 'gap'
+    : isBeforeShift ? 'before'
+    : 'active'
+
+  const appUsage = useShiftStore((s) => s.appUsage)
+
+  const buildCtx = (): MotivationContext => ({
+    state,
+    activityName: currentActivity?.name,
+    activityIcon: currentActivity?.icon,
+    nextLabel: nextActivity ? `${nextActivity.icon} ${nextActivity.name}` : '',
+    isLastActivity: isCurrentLast,
+    shiftProgress,
+    shiftName: activeTemplate?.name,
+    idleSeconds,
+    workedSeconds,
+    breakSeconds: (isIdle || isOvertime) ? idleSeconds : 0,
+    hour: new Date().getHours(),
+    currentApp: appUsage.current?.name,
+    currentAppTitle: appUsage.current?.title,
+    currentAppSeconds: appUsage.current?.seconds,
+    topApps: appUsage.today.slice(0, 3)
+  })
+
+  const [motivation, setMotivation] = useState<MotivationLine>({ text: '—', color: 'text-slate-400', highlight: null })
+  const lastLineRef = useRef<string>('')
+  const recentLinesRef = useRef<string[]>([])
+  const ctxRef = useRef<MotivationContext | null>(null)
+  ctxRef.current = buildCtx()
+
+  const applyLine = (line: MotivationLine) => {
+    lastLineRef.current = line.text
+    recentLinesRef.current = [...recentLinesRef.current, line.text].slice(-8)
+    setMotivation(line)
+  }
+
+  // Regenerate the line whenever the shift state / activity actually changes.
+  // (Avoids re-rolling on every tick since idleSeconds etc. change each second.)
+  const stateKey = `${state}|${currentActivity?.id ?? ''}|${paybackRunning}`
+  useEffect(() => {
+    let cancelled = false
+    const ctx = ctxRef.current ?? buildCtx()
+    generateComment(ctx, { lastText: lastLineRef.current, recent: recentLinesRef.current }).then((line) => {
+      if (!cancelled) applyLine(line)
+    })
+    return () => { cancelled = true }
+  }, [stateKey])
+
+  // "Fresh comment" scheduling — every 6-12 minutes a new observational one-liner
+  // (app usage, break length, progress), restarting the countdown on state change.
+  useEffect(() => {
+    let timeout: number
+    let cancelled = false
+    const schedule = () => {
+      const delay = (6 + Math.random() * 6) * 60 * 1000
+      timeout = window.setTimeout(() => {
+        const ctx = ctxRef.current ?? buildCtx()
+        generateComment(ctx, { ambient: true, lastText: lastLineRef.current, recent: recentLinesRef.current }).then((line) => {
+          if (!cancelled) applyLine(line)
+        })
+        schedule()
+      }, delay)
+    }
+    schedule()
+    return () => { cancelled = true; window.clearTimeout(timeout) }
+  }, [stateKey])
+
   return (
     <>
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-6.5rem)] overflow-y-auto pr-1">
+
       {/* Left Columns - Live Stats */}
       <div className="lg:col-span-2 flex flex-col gap-6">
-        
+
         {/* Clock & Active Shift Summary */}
         <div className="fluent-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -195,10 +257,19 @@ export default function Dashboard() {
               {currentTime}
               <span className="text-xl font-light text-slate-500 ml-1">{currentTimeSecs.substring(5)}</span>
             </h2>
+            {/* Motivasyon mesajı */}
+            <p className="text-xs mt-2">
+              <TypewriterText
+                text={motivation.text}
+                baseColor={motivation.color}
+                highlight={motivation.highlight}
+                highlightColor={HIGHLIGHT}
+              />
+            </p>
             {timeOffset !== 0 && (
               <button
                 onClick={() => setTimeOffset(0)}
-                className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-[11px] text-indigo-300 font-medium hover:bg-indigo-500/20 transition-colors"
+                className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-[11px] text-indigo-300 font-medium hover:bg-indigo-500/20 transition-colors"
                 title="Canlı saate dön"
               >
                 ↺ Geri alındı — <span className="font-mono font-bold">{effectiveTime}</span> · Canlıya Dön
@@ -210,7 +281,7 @@ export default function Dashboard() {
             <h3 className="text-xl font-medium text-slate-200 mt-1">
               {activeTemplate ? activeTemplate.name : 'Vardiya Atanmadı'}
             </h3>
-            {activeTemplate && (
+            {activeTemplate && activeTemplate.activities.length > 0 && (
               <p className="text-xs text-slate-400 mt-0.5">
                 {activeTemplate.activities.length} Aktivite • {activeTemplate.activities[0].startTime} - {activeTemplate.activities[activeTemplate.activities.length - 1].endTime}
               </p>
@@ -225,7 +296,7 @@ export default function Dashboard() {
             <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">
               {paybackRunning ? 'MEVCUT AKTİVİTE · PAYBACK' : 'MEVCUT AKTİVİTE'}
             </span>
-            
+
             {!activeTemplate || activeTemplate.activities.length === 0 ? (
               <div className="mt-4 flex items-center gap-4">
                 <div className="text-5xl p-4 rounded-2xl border bg-slate-500/10 border-slate-500/20">🚫</div>
@@ -279,7 +350,7 @@ export default function Dashboard() {
                     <p className="text-sm text-slate-400 mt-1">Harika bir iş çıkardınız! Geri almak isterseniz aşağıdaki butonu kullanın.</p>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={handleUncompleteShift}
                   className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors self-end md:self-auto whitespace-nowrap"
                 >
@@ -311,7 +382,7 @@ export default function Dashboard() {
                           <div
                             className="h-full bg-amber-500 rounded-full transition-all duration-1000 ease-out"
                             style={{ width: `${paybackPercent}%` }}
-                          ></div>
+                          />
                         </div>
                         <p className="text-[10px] text-slate-500 mt-1">
                           Günün aşım logunun %{Math.round(paybackPercent)}'si ödendi
@@ -324,14 +395,12 @@ export default function Dashboard() {
                   <button
                     onClick={stopPayback}
                     className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
-                    title="Payback'i duraklat"
                   >
                     ⏸ Durdur
                   </button>
                   <button
                     onClick={finishPayback}
                     className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-amber-500/20"
-                    title="Payback'i bitir ve vardiyayı tamamla"
                   >
                     ✔ Payback'i Bitir / Vardiyayı Tamamla
                   </button>
@@ -363,13 +432,13 @@ export default function Dashboard() {
                 </div>
                 {isOvertime && (
                   <div className="mt-4 flex justify-end gap-2 flex-wrap">
-                    <button 
+                    <button
                       onClick={handleExtendShift}
                       className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
                     >
                       ⏱ 30 Dk Uzat
                     </button>
-                    <button 
+                    <button
                       onClick={handleCompleteShift}
                       className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-2 rounded-lg font-semibold transition-colors"
                     >
@@ -382,7 +451,6 @@ export default function Dashboard() {
                     <button
                       onClick={handleGoToNextActivity}
                       className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-blue-500/20"
-                      title="Boşta beklemeyi bırak, sıradaki aktiviteye geç"
                     >
                       ▶ Sıradaki Aktiviteye Geç — {nextActivity.icon} {nextActivity.name} ({nextActivity.startTime})
                     </button>
@@ -392,99 +460,94 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Progress & Remaining Time / Overtime */}
+          {/* Progress & Remaining Time */}
           {activeTemplate && activeTemplate.activities.length > 0 && (
-          <div className="mt-8">
-            <div className="flex justify-between items-end mb-2">
-              <div>
-                <span className="text-xs text-slate-400 block uppercase tracking-wider font-semibold">
-                  {isIdle ? 'AŞIM SÜRESİ' : 'KALAN SÜRE'}
-                </span>
-                <span className={`text-4xl font-semibold tracking-tight ${
-                  isIdle ? 'text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.2)]' : colors?.text || 'text-slate-300'
-                }`}>
-                  {isShiftFinished ? '00:00' : isIdle ? formatRemaining(idleSeconds) : remainingTimeStr}
-                </span>
+            <div className="mt-8">
+              <div className="flex justify-between items-end mb-2">
+                <div>
+                  <span className="text-xs text-slate-400 block uppercase tracking-wider font-semibold">
+                    {isIdle ? 'AŞIM SÜRESİ' : 'KALAN SÜRE'}
+                  </span>
+                  <span className={`text-4xl font-semibold tracking-tight ${
+                    isIdle ? 'text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.2)]' : colors?.text || 'text-slate-300'
+                  }`}>
+                    {isShiftFinished ? '00:00' : isIdle ? formatRemaining(idleSeconds) : remainingTimeStr}
+                  </span>
+                </div>
+                {currentActivity && (
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Tamamlanma: %{Math.round(activityProgress)}
+                  </span>
+                )}
               </div>
-              {currentActivity && (
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Tamamlanma: %{Math.round(activityProgress)}
-                </span>
-              )}
+              <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5">
+                <div
+                  className={`h-full transition-all duration-1000 ease-out rounded-full ${
+                    isIdle ? 'bg-amber-500' : colors?.raw || 'bg-slate-500'
+                  }`}
+                  style={{ width: `${isShiftFinished || isOvertime ? 100 : paybackRunning ? paybackPercent : currentActivity ? activityProgress : 0}%` }}
+                />
+              </div>
             </div>
-            
-            {/* Custom Progress Bar */}
-            <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5">
-              <div 
-                className={`h-full transition-all duration-1000 ease-out rounded-full ${
-                  isIdle ? 'bg-amber-500' : colors?.raw || 'bg-slate-500'
-                }`}
-                style={{ width: `${isShiftFinished || isOvertime ? 100 : paybackRunning ? paybackPercent : currentActivity ? activityProgress : 0}%` }}
-              ></div>
-            </div>
-          </div>
           )}
         </div>
 
-        {/* Bottom Shift Progress and Next Activity */}
+        {/* Shift Progress + Next Activity */}
         {activeTemplate && activeTemplate.activities.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* Shift Completion Card */}
-          <div className="fluent-card p-6 flex flex-col justify-between">
-            <div>
-              <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block">VARDİYA İLERLEMESİ</span>
-              <span className="text-3xl font-light text-slate-200 mt-2 block">
-                %{Math.round(shiftProgress)} Tamamlandı
-              </span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="fluent-card p-6 flex flex-col justify-between">
+              <div>
+                <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block">VARDİYA İLERLEMESİ</span>
+                <span className="text-3xl font-light text-slate-200 mt-2 block">
+                  %{Math.round(shiftProgress)} Tamamlandı
+                </span>
+              </div>
+              <div className="mt-4">
+                <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5 p-0.5">
+                  <div
+                    className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                      isOvertime ? 'bg-rose-500' : 'bg-gradient-to-r from-blue-500 to-indigo-500'
+                    }`}
+                    style={{ width: `${shiftProgress}%` }}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="mt-4">
-              <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5 p-0.5">
-                <div 
-                  className={`h-full rounded-full transition-all duration-1000 ease-out ${
-                    isOvertime ? 'bg-rose-500' : 'bg-gradient-to-r from-blue-500 to-indigo-500'
-                  }`}
-                  style={{ width: `${shiftProgress}%` }}
-                ></div>
+
+            <div className="fluent-card p-6 flex flex-col justify-between">
+              <div>
+                <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block">SIRADAKİ AKTİVİTE</span>
+                {nextActivity ? (
+                  <div className="flex items-center gap-3 mt-3">
+                    <span className="text-3xl p-2 rounded-xl bg-white/5 border border-white/5">{nextActivity.icon}</span>
+                    <div>
+                      <h4 className="text-lg font-medium text-slate-200">{nextActivity.name}</h4>
+                      <p className="text-xs text-slate-400">{nextActivity.startTime} - {nextActivity.endTime}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 mt-4">
+                    {isShiftFinished || isOvertime ? 'Başka aktivite kalmadı.' : 'Vardiya Sonu'}
+                  </p>
+                )}
+              </div>
+              <div className="mt-2 text-right">
+                {nextActivity && (
+                  <span className="text-xs text-slate-500 font-mono">
+                    ({nextActivity.startTime}'de başlayacak)
+                  </span>
+                )}
               </div>
             </div>
           </div>
-
-          {/* Next Activity Card */}
-          <div className="fluent-card p-6 flex flex-col justify-between">
-            <div>
-              <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block">SIRADAKİ AKTİVİTE</span>
-              {nextActivity ? (
-                <div className="flex items-center gap-3 mt-3">
-                  <span className="text-3xl p-2 rounded-xl bg-white/5 border border-white/5">{nextActivity.icon}</span>
-                  <div>
-                    <h4 className="text-lg font-medium text-slate-200">{nextActivity.name}</h4>
-                    <p className="text-xs text-slate-400">{nextActivity.startTime} - {nextActivity.endTime}</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-400 mt-4">
-                  {isShiftFinished || isOvertime ? 'Başka aktivite kalmadı.' : 'Vardiya Sonu'}
-                </p>
-              )}
-            </div>
-            <div className="mt-2 text-right">
-              {nextActivity && (
-                <span className="text-xs text-slate-500 font-mono">
-                  ({nextActivity.startTime}'de başlayacak)
-                </span>
-              )}
-            </div>
-            </div>
-          </div>
         )}
-
       </div>
 
       {/* Right Column - Today's Timeline */}
-      <div className="fluent-card p-6 flex flex-col h-full min-h-[450px]">
+      <div className="fluent-card p-6 flex flex-col min-h-[450px]">
         <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block mb-4">BUGÜNÜN ZAMAN ÇİZELGESİ</span>
-        <div className="flex-1 overflow-y-auto">
+        {/* flex-1 min-h-0 flex flex-col so Timeline's own scroll + undone button works */}
+        <div className="flex-1 min-h-0 flex flex-col">
           <Timeline />
         </div>
       </div>
@@ -498,7 +561,6 @@ export default function Dashboard() {
               <button
                 onClick={() => setConfirmReset(true)}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 font-medium hover:bg-amber-500/20 transition-colors"
-                title="Anlık aşım süresini sıfırla"
               >
                 ↺ Aşımı Sıfırla
               </button>
@@ -519,6 +581,60 @@ export default function Dashboard() {
                 </p>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Weekly Heatmap */}
+      {Object.keys(dailyLogs).length > 0 && (
+        <div className="lg:col-span-3 fluent-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">📅 SON 7 GÜN</span>
+            <span className="text-[10px] text-slate-600">Uygulama açıkken toplanan veriler</span>
+          </div>
+          <div className="grid grid-cols-7 gap-2">
+            {weekDays.map((dateStr, i) => {
+              const log = dailyLogs[dateStr]
+              const worked = log?.workedSeconds ?? 0
+              const idle = log?.idleSeconds ?? 0
+              const completed = log?.completed ?? false
+              const hasData = worked > 0 || idle > 0
+              const today = i === 6
+
+              // Intensity: 0 = no data, 1 = <2h, 2 = 2-4h, 3 = 4-6h, 4 = >6h
+              const workedH = worked / 3600
+              const intensity = !hasData ? 0 : workedH < 2 ? 1 : workedH < 4 ? 2 : workedH < 6 ? 3 : 4
+              const bgCls = intensity === 0 ? 'bg-slate-800/50' : intensity === 1 ? 'bg-blue-900/60' : intensity === 2 ? 'bg-blue-700/60' : intensity === 3 ? 'bg-blue-500/70' : 'bg-blue-400/80'
+
+              const d = new Date(dateStr + 'T00:00:00')
+              const dayLabel = DAY_SHORT[d.getDay()]
+
+              return (
+                <div key={dateStr} className="flex flex-col items-center gap-1.5">
+                  <span className={`text-[10px] font-medium ${today ? 'text-blue-400' : 'text-slate-600'}`}>{dayLabel}</span>
+                  <div
+                    title={hasData ? `Çalışılan: ${Math.floor(worked / 3600)}sa ${Math.floor((worked % 3600) / 60)}dk${idle > 0 ? ` · Aşım: ${Math.floor(idle / 3600)}sa ${Math.floor((idle % 3600) / 60)}dk` : ''}` : 'Veri yok'}
+                    className={`w-full aspect-square rounded-lg border transition-all duration-200 flex items-center justify-center ${bgCls} ${today ? 'border-blue-500/50' : 'border-white/5'} ${completed ? 'ring-1 ring-emerald-500/50' : ''}`}
+                  >
+                    {completed && <span className="text-[8px] text-emerald-400">✓</span>}
+                    {idle > 300 && !completed && hasData && <span className="text-[8px] text-amber-400">!</span>}
+                  </div>
+                  <span className={`text-[9px] font-mono ${hasData ? 'text-slate-400' : 'text-slate-700'}`}>
+                    {hasData ? `${Math.floor(worked / 3600)}sa` : '—'}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          {/* Legend */}
+          <div className="flex items-center gap-3 mt-3 justify-end">
+            <span className="text-[9px] text-slate-600">Az</span>
+            {[0, 1, 2, 3, 4].map(lvl => (
+              <div key={lvl} className={`w-3 h-3 rounded-sm ${lvl === 0 ? 'bg-slate-800' : lvl === 1 ? 'bg-blue-900/60' : lvl === 2 ? 'bg-blue-700/60' : lvl === 3 ? 'bg-blue-500/70' : 'bg-blue-400/80'}`} />
+            ))}
+            <span className="text-[9px] text-slate-600">Çok</span>
+            <span className="text-[9px] text-slate-600 ml-2">✓ = Tamamlandı</span>
+            <span className="text-[9px] text-slate-600">! = Aşım var</span>
           </div>
         </div>
       )}

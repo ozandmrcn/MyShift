@@ -1,5 +1,9 @@
 import { create } from 'zustand'
 
+// The foreground-app snapshot push is registered once (guarded so hot-reloads or
+// repeated loadFromStore calls don't stack listeners).
+let appUsageSubscribed = false
+
 export interface Activity {
   id: string
   name: string
@@ -29,6 +33,14 @@ export interface Settings {
   autoMinimizeToTray: boolean
   defaultNotificationSound: string
   birthday: string // "MM-DD"
+
+  // Comment engine — who writes the one-liner under the clock.
+  // 'offline' = built-in generative engine (always works, no network).
+  // 'ollama' / 'openai' / 'openrouter' = a local / remote LLM writes fresh lines instead.
+  commentProvider: 'offline' | 'ollama' | 'openai' | 'openrouter'
+  commentBaseUrl: string
+  commentApiKey: string
+  commentModel: string
 }
 
 export interface DayLog {
@@ -62,6 +74,10 @@ interface ShiftStore {
 
   // Daily history — one snapshot record per date, kept for the History page
   dailyLogs: Record<string, DayLog>
+
+  // Foreground app usage (tracked by the main process) — feeds the personalized
+  // motivation lines on the Dashboard
+  appUsage: AppUsageSnapshot
   
   // Actions
   loadFromStore: () => Promise<void>
@@ -82,6 +98,8 @@ interface ShiftStore {
   stopPayback: () => void
   finishPayback: () => void
   updateDayLog: (dateStr: string, log: Partial<DayLog>) => void
+  deleteDayLog: (dateStr: string) => void
+  updateAppUsage: (snapshot: AppUsageSnapshot) => void
 }
 
 const defaultSettings: Settings = {
@@ -90,7 +108,11 @@ const defaultSettings: Settings = {
   minimizeToTray: true,
   autoMinimizeToTray: true,
   defaultNotificationSound: 'default',
-  birthday: ''
+  birthday: '',
+  commentProvider: 'offline',
+  commentBaseUrl: 'http://127.0.0.1:11434',
+  commentApiKey: '',
+  commentModel: 'qwen2.5'
 }
 
 // Helper to calculate duration in minutes between HH:mm and HH:mm
@@ -141,6 +163,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   paybackAccumMs: 0,
   paybackStartTs: null,
   dailyLogs: {},
+  appUsage: { current: null, today: [], todayTotalSeconds: 0 },
 
   loadFromStore: async () => {
     set({ isLoading: true })
@@ -161,6 +184,18 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
         }
 
         const isStartupEnabled = await api.startup.get()
+
+        // Live foreground-app snapshot for the motivation lines
+        let appUsage = { current: null as AppUsageSnapshot['current'], today: [] as AppUsageSnapshot['today'], todayTotalSeconds: 0 }
+        if (api.appUsage) {
+          try { appUsage = await api.appUsage.getSnapshot() } catch { /* non-fatal */ }
+          if (!appUsageSubscribed) {
+            appUsageSubscribed = true
+            api.appUsage.onSnapshot((snap) => {
+              useShiftStore.getState().updateAppUsage(snap)
+            })
+          }
+        }
 
         const savedIdle = (await api.store.get('idleState', null)) as {
           idleAccumMs?: number
@@ -193,6 +228,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           idleLogMs: sameDay ? savedIdle.idleLogMs ?? 0 : 0,
           paybackAccumMs: sameDay ? savedIdle.paybackAccumMs ?? 0 : 0,
           paybackStartTs: null,
+          appUsage,
           isLoading: false 
         })
       } else {
@@ -564,6 +600,25 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     } else {
       localStorage.setItem('dailyLogs', JSON.stringify(newLogs))
     }
+  },
+
+  deleteDayLog: (dateStr) => {
+    const { dailyLogs } = get()
+    if (!dailyLogs[dateStr]) return
+    const newLogs = { ...dailyLogs }
+    delete newLogs[dateStr]
+    set({ dailyLogs: newLogs })
+
+    const api = window.electronAPI
+    if (api && api.store) {
+      api.store.set('dailyLogs', newLogs)
+    } else {
+      localStorage.setItem('dailyLogs', JSON.stringify(newLogs))
+    }
+  },
+
+  updateAppUsage: (snapshot) => {
+    set({ appUsage: snapshot })
   }
   }
 })

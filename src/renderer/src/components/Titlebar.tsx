@@ -1,73 +1,90 @@
-import React from 'react'
-import appIcon from '../../../../resources/icon.png'
+import { useLiveShiftEngine, formatRemaining } from '../hooks/useLiveShiftEngine'
 
 export default function Titlebar() {
-  const handleMinimize = () => {
-    window.electronAPI?.window?.minimize()
-  }
+  const {
+    currentActivity,
+    isBeforeShift,
+    isShiftFinished,
+    isOvertime,
+    paybackRunning,
+    isIdle,
+    remainingTimeStr,
+    idleSeconds,
+    activeTemplate
+  } = useLiveShiftEngine() as any
 
-  const handleMaximize = () => {
-    window.electronAPI?.window?.maximize()
-  }
+  const handleMinimize = () => window.electronAPI?.window?.minimize()
+  const handleMaximize = () => window.electronAPI?.window?.maximize()
+  const handleClose = () => window.electronAPI?.window?.close()
 
-  const handleClose = () => {
-    window.electronAPI?.window?.close()
+  // Build status pill
+  let pill: { label: string; color: string } | null = null
+  if (isShiftFinished) {
+    pill = { label: '✔ Tamamlandı', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' }
+  } else if (paybackRunning) {
+    pill = { label: `⏳ Payback · ${formatRemaining(idleSeconds)}`, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' }
+  } else if (isOvertime) {
+    pill = { label: '⏰ Aşım', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' }
+  } else if (isIdle && idleSeconds > 0) {
+    pill = { label: `📈 Aşım · ${formatRemaining(idleSeconds)}`, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' }
+  } else if (currentActivity) {
+    pill = {
+      label: `${currentActivity.icon} ${currentActivity.name} · ${remainingTimeStr}`,
+      color: 'text-blue-300 bg-blue-500/10 border-blue-500/20'
+    }
+  } else if (isBeforeShift && activeTemplate) {
+    pill = { label: '💤 Vardiya Bekleniyor', color: 'text-slate-400 bg-white/5 border-white/10' }
   }
 
   return (
-    <header 
-      className="flex items-center justify-between h-9 px-3 bg-slate-900/40 border-b border-white/5 select-none"
-      style={{ WebKitAppRegion: 'drag' } as React.CSSProperties}
+    <div
+      className="flex items-center justify-between h-10 px-4 bg-slate-950/70 border-b border-white/5 flex-shrink-0 select-none"
+      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
-      {/* Brand Label */}
-      <div className="flex items-center gap-2">
-        <img
-          src={appIcon}
-          alt="MyShift"
-          draggable={false}
-          className="w-4 h-4 rounded-[3px] select-none pointer-events-none"
-        />
-        <span className="text-xs font-semibold tracking-wider text-slate-300">MYSHIFT</span>
+      {/* Left: App name */}
+      <div className="flex items-center gap-2.5">
+        <span className="text-sm font-semibold text-slate-200 tracking-wide">MyShift</span>
+        <span className="text-slate-700 text-xs">|</span>
+        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">Vardiya Sistemi</span>
       </div>
 
-      {/* Control Buttons */}
-      <div 
-        className="flex h-full"
-        style={{ WebKitAppRegion: 'no-drag' } as React.CSSProperties}
+      {/* Center: Live activity status pill */}
+      {pill && (
+        <div
+          className={`hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium max-w-[40%] truncate ${pill.color}`}
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          <span className="truncate">{pill.label}</span>
+        </div>
+      )}
+
+      {/* Right: Window controls */}
+      <div
+        className="flex items-center gap-1"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        {/* Minimize */}
-        <button 
+        <button
           onClick={handleMinimize}
-          className="flex items-center justify-center w-11 h-full hover:bg-white/10 transition-colors"
-          title="Simge Durumuna Küçült"
+          className="w-8 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-all text-sm"
+          title="Küçült"
         >
-          <svg className="w-2.5 h-2.5 fill-slate-300" viewBox="0 0 10 1">
-            <rect width="10" height="1" />
-          </svg>
+          ─
         </button>
-
-        {/* Maximize */}
-        <button 
+        <button
           onClick={handleMaximize}
-          className="flex items-center justify-center w-11 h-full hover:bg-white/10 transition-colors"
-          title="Ekranı Kapla"
+          className="w-8 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-all text-xs"
+          title="Büyüt / Küçült"
         >
-          <svg className="w-2.5 h-2.5 fill-none stroke-slate-300 stroke-[1px]" viewBox="0 0 10 10">
-            <rect x="1.5" y="1.5" width="7" height="7" />
-          </svg>
+          □
         </button>
-
-        {/* Close */}
-        <button 
+        <button
           onClick={handleClose}
-          className="flex items-center justify-center w-11 h-full hover:bg-red-600/90 hover:fill-white group transition-colors"
+          className="w-8 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-rose-500 transition-all text-sm"
           title="Kapat"
         >
-          <svg className="w-2.5 h-2.5 fill-slate-300 group-hover:fill-white" viewBox="0 0 10 10">
-            <path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" strokeWidth="1" />
-          </svg>
+          ✕
         </button>
       </div>
-    </header>
+    </div>
   )
 }

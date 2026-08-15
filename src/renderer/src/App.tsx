@@ -6,13 +6,28 @@ import Dashboard from './components/Dashboard'
 import ShiftEditor from './views/ShiftEditor'
 import History from './views/History'
 import SettingsView from './views/Settings'
+import DataView from './views/Data'
+import ObserveView from './views/Observe'
 
 export default function App() {
   const { loadFromStore, isLoading } = useShiftStore()
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  // While observation is recording, the app is locked to the Observe tab — the
+  // user chose to collect pure data, so the shift tracker UI is put away.
+  const [recording, setRecording] = useState(false)
 
   useEffect(() => {
     loadFromStore()
+  }, [])
+
+  useEffect(() => {
+    const poll = async () => {
+      const s = await window.electronAPI?.surveillance?.getStatus?.()
+      setRecording(!!s?.enabled)
+    }
+    void poll()
+    const t = window.setInterval(poll, 3000)
+    return () => window.clearInterval(t)
   }, [])
 
   // Tray quick actions — triggered from the system tray context menu
@@ -59,56 +74,88 @@ export default function App() {
           }`}>
             {/* Top Navigation Links */}
             <div className="flex flex-col gap-2">
-              <NavLink 
-                to="/dashboard"
-                className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
-                  isActive 
-                    ? 'bg-white/8 text-white border-l-2 border-blue-500' 
-                    : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
-                }`}
-              >
-                <span className="text-lg">📊</span>
-                <span className="hidden md:inline">Dashboard</span>
-              </NavLink>
+              {!recording && (
+                <NavLink 
+                  to="/dashboard"
+                  className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
+                    isActive 
+                      ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                      : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
+                  }`}
+                >
+                  <span className="text-lg">📊</span>
+                  <span className="hidden md:inline">Dashboard</span>
+                </NavLink>
+              )}
 
               <NavLink 
-                to="/editor"
+                to="/observe"
                 className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
                   isActive 
-                    ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                    ? 'bg-white/8 text-white border-l-2 border-amber-500' 
                     : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
                 }`}
               >
-                <span className="text-lg">⚙️</span>
-                <span className="hidden md:inline">Vardiya Editörü</span>
+                <span className="text-lg">👁️</span>
+                <span className="hidden md:inline">Gözlem Modu</span>
               </NavLink>
 
-              <NavLink 
-                to="/history"
-                className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
-                  isActive 
-                    ? 'bg-white/8 text-white border-l-2 border-blue-500' 
-                    : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
-                }`}
-              >
-                <span className="text-lg">🗓️</span>
-                <span className="hidden md:inline">Geçmiş</span>
-              </NavLink>
+              {!recording && (
+                <>
+                  <NavLink 
+                    to="/editor"
+                    className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
+                      isActive 
+                        ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                        : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="text-lg">⚙️</span>
+                    <span className="hidden md:inline">Vardiya Editörü</span>
+                  </NavLink>
+
+                  <NavLink 
+                    to="/history"
+                    className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
+                      isActive 
+                        ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                        : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="text-lg">🗓️</span>
+                    <span className="hidden md:inline">Geçmiş</span>
+                  </NavLink>
+
+                  <NavLink 
+                    to="/data"
+                    className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
+                      isActive 
+                        ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                        : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="text-lg">🛰️</span>
+                    <span className="hidden md:inline">Toplanan Veriler</span>
+                  </NavLink>
+                </>
+              )}
             </div>
 
             {/* Bottom Settings Link */}
             <div>
-              <NavLink 
-                to="/settings"
-                className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
-                  isActive 
-                    ? 'bg-white/8 text-white border-l-2 border-blue-500' 
-                    : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
-                }`}
-              >
-                <span className="text-lg">🛠️</span>
-                <span className="hidden md:inline">Ayarlar</span>
-              </NavLink>
+              {!recording && (
+                <NavLink 
+                  to="/settings"
+                  className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
+                    isActive 
+                      ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                      : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
+                  }`}
+                >
+                  <span className="text-lg">🛠️</span>
+                  <span className="hidden md:inline">Ayarlar</span>
+                </NavLink>
+              )}
 
               <button
                 onClick={() => setSidebarOpen(false)}
@@ -137,11 +184,22 @@ export default function App() {
             {/* Smooth page fade transition container */}
             <div className="h-full overflow-hidden animate-in fade-in duration-300">
               <Routes>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/editor" element={<ShiftEditor />} />
-                <Route path="/history" element={<History />} />
-                <Route path="/settings" element={<SettingsView />} />
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                {recording ? (
+                  <>
+                    <Route path="/observe" element={<ObserveView />} />
+                    <Route path="*" element={<Navigate to="/observe" replace />} />
+                  </>
+                ) : (
+                  <>
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/observe" element={<ObserveView />} />
+                    <Route path="/editor" element={<ShiftEditor />} />
+                    <Route path="/history" element={<History />} />
+                    <Route path="/data" element={<DataView />} />
+                    <Route path="/settings" element={<SettingsView />} />
+                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                  </>
+                )}
               </Routes>
             </div>
           </main>

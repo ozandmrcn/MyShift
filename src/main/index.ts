@@ -1,14 +1,48 @@
-import { app, session, BrowserWindow, ipcMain, Tray, Menu, Notification } from 'electron'
+import { app, session, BrowserWindow, ipcMain, Tray, Menu, Notification, dialog } from 'electron'
 import { join } from 'path'
+import { execFile } from 'child_process'
 import Store from 'electron-store'
+import { startAppTracker, AppUsageSnapshot } from './appTracker'
+import { generateAiComment, AiCommentConfig, testAiConnection, getOpenRouterModels, extractMeaningfulTyped } from './aiComment'
+import { AiCommentRequest, AiCommentResult } from '../shared/aiTypes'
+import { startSurveillance, SurveillanceSnapshot } from './surveillanceTracker'
+import { analyzeSurveillance } from './surveillanceAnalyzer'
+import { dataDir, surveillanceDir, loadAiProfile, saveAiProfile, appendAiNote, AiProfile } from './dataStore'
+import { existsSync, copyFileSync, readFileSync, readdirSync, writeFileSync, appendFileSync, rmSync } from 'fs'
 
-// Initialize Electron Store
-const store = new Store()
+// Initialize Electron Store — all settings live in the visible data/ folder.
+// Migrate an old config.json from userData if present, so no settings are lost.
+const store = new Store({ cwd: dataDir() })
+
+function migrateLegacyStore(): void {
+  if (existsSync(join(dataDir(), 'config.json'))) return
+  const legacy = join(app.getPath('userData'), 'config.json')
+  if (existsSync(legacy)) copyFileSync(legacy, join(dataDir(), 'config.json'))
+}
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let trayMenu: Menu | null = null
 let isQuitting = false
+let stopAppTracker: (() => void) | null = null
+let getAppUsageSnapshot: (() => AppUsageSnapshot) | null = null
+let setAppUsagePaused: ((paused: boolean) => void) | null = null
+let stopSurveillance: (() => void) | null = null
+let getSurveillanceSnapshot: (() => SurveillanceSnapshot) | null = null
+
+// Windows toast notifications attribute themselves to the app via an
+// AppUserModelID (AUMID). The NSIS installer registers `com.myshift.app` through
+// the Start Menu shortcut, but dev / `pack --dir` runs have no shortcut, so
+// Windows would otherwise show the raw exe path as the app name. Self-registering
+// the AUMID's DisplayName makes every run show "MyShift" correctly.
+function registerAppUserModelId(): void {
+  const aumid = 'com.myshift.app'
+  app.setAppUserModelId(aumid)
+  if (process.platform !== 'win32') return
+  const regPath = `HKCU\\Software\\Classes\\AppUserModelId\\${aumid}`
+  execFile('reg', ['add', regPath, '/v', 'DisplayName', '/t', 'REG_EXPAND_SZ', '/d', 'MyShift', '/f'], () => {})
+  execFile('reg', ['add', regPath, '/v', 'IconUri', '/t', 'REG_EXPAND_SZ', '/d', join(app.getAppPath(), 'resources/icon.png'), '/f'], () => {})
+}
 
 function createTray(): void {
   // Use a default system icon or fallback for tray icon (we'll provide a real icon path later)
@@ -88,7 +122,11 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // Keep the renderer's 1s clock ticking even when the window is hidden in the
+      // tray — otherwise Chromium throttles timers in background pages and activity /
+      // aşım transition notifications arrive late or not at all while running in tray.
+      backgroundThrottling: false
     }
   })
 
@@ -174,8 +212,11 @@ if (!gotTheLock) {
   })
 
   app.whenReady().then(() => {
-    // Set App ID for Windows Native Notifications
-    app.setAppUserModelId('com.myshift.app')
+    // Set a proper AppUserModelID for Windows Native Notifications so toasts are
+    // attributed to "MyShift" instead of the raw executable path (see registerAppUserModelId).
+    if (process.platform === 'win32') {
+      registerAppUserModelId()
+    }
 
     // Content-Security-Policy for the packaged renderer (file://). The dev server
     // (http://) is unaffected, so HMR keeps working during development.
@@ -192,6 +233,32 @@ if (!gotTheLock) {
 
     createWindow()
     createTray()
+
+    // Migrate old userData config.json into the visible data/ folder (once).
+    migrateLegacyStore()
+
+    // Background foreground-app tracker (feeds the Dashboard motivation lines)
+    const tracker = startAppTracker(() => mainWindow, store)
+    stopAppTracker = tracker.stop
+    getAppUsageSnapshot = tracker.getSnapshot
+    setAppUsagePaused = tracker.setPaused
+
+    // Opt-in activity recorder (data/ folder). Only active when the user enables it.
+    const surveillance = startSurveillance(
+      () => mainWindow,
+      () => store.get('settings.surveillanceEnabled', false) as boolean
+    )
+    stopSurveillance = surveillance.stop
+    getSurveillanceSnapshot = surveillance.getSnapshot
+
+    // If observation is already enabled (e.g. app reopened while recording), the
+    // background shift tracker must not run in parallel with it.
+    if (store.get('settings.surveillanceEnabled', false) as boolean) {
+      tracker.setPaused(true)
+      // And the tray badge should reflect it right away.
+      surveillanceRecording = true
+      applyTrayLabel()
+    }
 
     app.on('activate', function () {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -267,20 +334,28 @@ ipcMain.on('notification:show', (_event, title: string, body: string, silent = f
 })
 
 // 3.5 Tray Tooltip Updates (live status from renderer)
-ipcMain.on('tray:update-info', (_event, text: string) => {
-  if (tray) {
-    // Windows tooltips are length-limited (~127 chars); keep it short
-    const label = text ? String(text).slice(0, 120) : 'MyShift - Personal Shift Management'
-    tray.setToolTip(label)
-    // Mirror the live status into the (disabled) first menu row
-    if (trayMenu) {
-      const statusItem = trayMenu.getMenuItemById('status')
-      if (statusItem) {
-        statusItem.label = label
-        tray.setContextMenu(trayMenu)
-      }
+let lastTrayLabel = ''
+let surveillanceRecording = false
+
+function applyTrayLabel(): void {
+  if (!tray) return
+  const obs = surveillanceRecording ? '👁️ Gözlem modu aktif' : ''
+  const label = (obs ? `${obs} • ` : '') + (lastTrayLabel || 'MyShift - Personal Shift Management')
+  const final = label.slice(0, 120)
+  tray.setToolTip(final)
+  if (trayMenu) {
+    const statusItem = trayMenu.getMenuItemById('status')
+    if (statusItem) {
+      statusItem.label = final
+      tray.setContextMenu(trayMenu)
     }
   }
+}
+
+ipcMain.on('tray:update-info', (_event, text: string) => {
+  // Windows tooltips are length-limited (~127 chars); keep it short
+  lastTrayLabel = text ? String(text).slice(0, 120) : ''
+  applyTrayLabel()
 })
 
 // 4. Windows Startup Configuration
@@ -296,4 +371,218 @@ ipcMain.handle('startup:set', (_event, enabled: boolean) => {
 ipcMain.handle('startup:get', () => {
   const settings = app.getLoginItemSettings()
   return settings.openAtLogin
+})
+
+// 5. Foreground App Usage (for the Dashboard motivation engine)
+ipcMain.handle('app-usage:get', (): AppUsageSnapshot => {
+  return getAppUsageSnapshot ? getAppUsageSnapshot() : { current: null, today: [], todayTotalSeconds: 0 }
+})
+
+// 6. AI Comment Writer (Ollama / OpenAI-compatible). Settings live in electron-store;
+// the renderer only sends context, never the API key.
+ipcMain.handle('ai:generate-comment', async (_event, req: AiCommentRequest): Promise<AiCommentResult | null> => {
+  const cfg: AiCommentConfig = {
+    provider: store.get('settings.commentProvider', 'offline') as AiCommentConfig['provider'],
+    baseUrl: store.get('settings.commentBaseUrl', 'http://127.0.0.1:11434') as string,
+    apiKey: store.get('settings.commentApiKey', '') as string,
+    model: store.get('settings.commentModel', 'qwen2.5') as string
+  }
+  // Attach the accumulated profile notes ("what the AI knows about the user") and
+  // the freshest keyboard activity from observation mode. The typed text is
+  // pre-processed into complete, meaningful words (split flushes are re-joined,
+  // half-typed trailing words are dropped) so the AI never latches onto a
+  // meaningless fragment like "alt" while the user is typing "altyazı".
+  const profile = loadAiProfile()
+  const snap = getSurveillanceSnapshot?.()
+  const typedText = snap ? extractMeaningfulTyped(snap.recent, 3) : null
+  const enriched: AiCommentRequest = {
+    ...req,
+    typedText,
+    typedCharsToday: snap?.today?.typedChars ?? 0,
+    profileNotes: profile.notes.map(n => n.text)
+  }
+  return generateAiComment(enriched, cfg)
+})
+
+// 6.5 Live AI connection check (Settings page) — reports whether the configured
+// API key / provider actually works, with a human-readable failure reason.
+ipcMain.handle('ai:test', async (): Promise<ReturnType<typeof testAiConnection>> => {
+  const cfg: AiCommentConfig = {
+    provider: store.get('settings.commentProvider', 'offline') as AiCommentConfig['provider'],
+    baseUrl: store.get('settings.commentBaseUrl', 'http://127.0.0.1:11434') as string,
+    apiKey: store.get('settings.commentApiKey', '') as string,
+    model: store.get('settings.commentModel', 'qwen2.5') as string
+  }
+  return testAiConnection(cfg)
+})
+
+// 6.6 Current OpenRouter free model list — lets the Settings page offer an
+// always-fresh picker (free models come and go on OpenRouter).
+ipcMain.handle('ai:openrouter-models', async () => getOpenRouterModels())
+
+// 7. Surveillance ("Toplanan Veriler") — opt-in activity recording + analysis.
+ipcMain.handle('surveillance:get-status', (): SurveillanceSnapshot => {
+  return getSurveillanceSnapshot
+    ? getSurveillanceSnapshot()
+    : { enabled: false, startedAt: null, current: null, recent: [], today: { totalSeconds: 0, appSeconds: [], samples: 0, typedFlushes: 0, typedChars: 0 }, recentDays: [] }
+})
+
+ipcMain.handle('surveillance:set-enabled', (_event, enabled: boolean) => {
+  store.set('settings.surveillanceEnabled', !!enabled)
+  // While observation is recording, the background shift tracker is paused so
+  // shift stats don't keep running alongside the pure observation session.
+  setAppUsagePaused?.(!!enabled)
+  // Surface the recording state on the tray tooltip so it's visible even when
+  // the app is minimized to the tray ("👁️ Gözlem modu aktif").
+  surveillanceRecording = !!enabled
+  applyTrayLabel()
+  return true
+})
+
+// 8. AI profile ("kullanıcıyı tanıyan notlar") — CRUD + on-demand analysis.
+ipcMain.handle('profile:get', (): AiProfile => loadAiProfile())
+
+ipcMain.handle('profile:add-note', (_event, text: string): AiProfile => appendAiNote(String(text)))
+
+ipcMain.handle('profile:remove-note', (_event, index: number): AiProfile => {
+  const profile = loadAiProfile()
+  const i = Number(index)
+  if (Number.isInteger(i) && i >= 0 && i < profile.notes.length) {
+    profile.notes.splice(i, 1)
+    profile.updatedAt = new Date().toISOString()
+    saveAiProfile(profile)
+  }
+  return profile
+})
+
+ipcMain.handle('profile:clear', (): AiProfile => {
+  const profile: AiProfile = { notes: [], updatedAt: new Date().toISOString() }
+  saveAiProfile(profile)
+  return profile
+})
+
+ipcMain.handle('surveillance:analyze', async (_event, days?: number): Promise<AiProfile> => {
+  const cfg: AiCommentConfig = {
+    provider: store.get('settings.commentProvider', 'offline') as AiCommentConfig['provider'],
+    baseUrl: store.get('settings.commentBaseUrl', 'http://127.0.0.1:11434') as string,
+    apiKey: store.get('settings.commentApiKey', '') as string,
+    model: store.get('settings.commentModel', 'qwen2.5') as string
+  }
+  return analyzeSurveillance(cfg, Number(days) || 7)
+})
+
+// 9. Data export / import — bundles the AI profile + surveillance logs into one
+// JSON file the user can back up, transfer, or restore on another machine.
+export interface DataExportBundle {
+  app: 'myshift'
+  type: 'myshift-data-export'
+  version: 1
+  exportedAt: string
+  data: {
+    aiProfile: AiProfile
+    surveillance: Record<string, string> // "YYYY-MM-DD.jsonl" -> file content
+  }
+}
+
+function buildExportBundle(): DataExportBundle {
+  const files: Record<string, string> = {}
+  let names: string[] = []
+  try { names = readdirSync(surveillanceDir()).filter(n => n.endsWith('.jsonl')) } catch { /* no dir yet */ }
+  for (const name of names) {
+    try { files[name] = readFileSync(join(surveillanceDir(), name), 'utf8') } catch { /* skip */ }
+  }
+  return {
+    app: 'myshift',
+    type: 'myshift-data-export',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    data: { aiProfile: loadAiProfile(), surveillance: files }
+  }
+}
+
+ipcMain.handle('data:export', async (_event): Promise<{ ok: boolean; file?: string; error?: string }> => {
+  try {
+    const d = new Date()
+    const defaultName = `myshift-data-${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}.json`
+    const result = await dialog.showSaveDialog({
+      title: 'MyShift Verilerini Dışa Aktar',
+      defaultPath: defaultName,
+      filters: [{ name: 'MyShift Data', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePath) return { ok: false, error: 'iptal' }
+    writeFileSync(result.filePath, JSON.stringify(buildExportBundle(), null, 2), 'utf8')
+    return { ok: true, file: result.filePath }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+})
+
+ipcMain.handle('data:import', async (_event): Promise<{ ok: boolean; notes?: number; files?: number; error?: string }> => {
+  try {
+    const result = await dialog.showOpenDialog({
+      title: 'MyShift Verilerini İçe Aktar',
+      filters: [{ name: 'MyShift Data', extensions: ['json'] }],
+      properties: ['openFile']
+    })
+    if (result.canceled || !result.filePaths[0]) return { ok: false, error: 'iptal' }
+    const raw = JSON.parse(readFileSync(result.filePaths[0], 'utf8'))
+    if (raw?.type !== 'myshift-data-export') return { ok: false, error: 'Bu bir MyShift veri dosyası değil.' }
+    const data = raw.data ?? {}
+
+    // Merge AI profile notes (dedupe handled inside appendAiNote)
+    const before = loadAiProfile().notes.length
+    for (const note of data.aiProfile?.notes ?? []) appendAiNote(String(note.text ?? ''))
+    const after = loadAiProfile().notes.length
+
+    // Merge surveillance day files line-by-line (no duplicates)
+    let files = 0
+    const dir = surveillanceDir()
+    for (const [name, content] of Object.entries(data.surveillance ?? {})) {
+      if (!/^\d{4}-\d{2}-\d{2}\.jsonl$/.test(name)) continue
+      const file = join(dir, name)
+      const existing = new Set<string>()
+      if (existsSync(file)) {
+        for (const l of readFileSync(file, 'utf8').split('\n')) existing.add(l.trim())
+      }
+      let added = 0
+      for (const line of String(content).split('\n')) {
+        const l = line.trim()
+        if (l && !existing.has(l)) {
+          appendFileSync(file, l + '\n', 'utf8')
+          existing.add(l)
+          added++
+        }
+      }
+      if (added > 0) files++
+    }
+
+    return { ok: true, notes: after - before, files }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+})
+
+// 10. Wipe all collected observation data (surveillance files only; keeps settings).
+ipcMain.handle('data:clear-surveillance', async (): Promise<{ ok: boolean; error?: string }> => {
+  try {
+    let names: string[] = []
+    try { names = readdirSync(surveillanceDir()).filter(n => n.endsWith('.jsonl')) } catch { /* none */ }
+    for (const name of names) rmSync(join(surveillanceDir(), name), { force: true })
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+})
+
+// Cleanup on quit
+app.on('will-quit', () => {
+  if (stopAppTracker) {
+    stopAppTracker()
+    stopAppTracker = null
+    setAppUsagePaused = null
+  }
+  if (stopSurveillance) {
+    stopSurveillance()
+    stopSurveillance = null
+  }
 })

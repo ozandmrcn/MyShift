@@ -25,5 +25,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startup: {
     set: (enabled: boolean) => ipcRenderer.invoke('startup:set', enabled),
     get: () => ipcRenderer.invoke('startup:get')
+  },
+  appUsage: {
+    getSnapshot: () => ipcRenderer.invoke('app-usage:get'),
+    onSnapshot: (callback: (snapshot: any) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, snapshot: any) => callback(snapshot)
+      ipcRenderer.on('app-usage:snapshot', listener)
+      return () => ipcRenderer.removeListener('app-usage:snapshot', listener)
+    }
+  },
+  ai: {
+    generateComment: (req: any) => ipcRenderer.invoke('ai:generate-comment', req),
+    test: () => ipcRenderer.invoke('ai:test'),
+    getOpenRouterModels: () => ipcRenderer.invoke('ai:openrouter-models')
+  },
+  surveillance: {
+    getStatus: () => ipcRenderer.invoke('surveillance:get-status'),
+    setEnabled: (enabled: boolean) => ipcRenderer.invoke('surveillance:set-enabled', enabled),
+    analyze: (days?: number) => ipcRenderer.invoke('surveillance:analyze', days)
+  },
+  profile: {
+    get: () => ipcRenderer.invoke('profile:get'),
+    addNote: (text: string) => ipcRenderer.invoke('profile:add-note', text),
+    removeNote: (index: number) => ipcRenderer.invoke('profile:remove-note', index),
+    clear: () => ipcRenderer.invoke('profile:clear')
+  },
+  data: {
+    export: () => ipcRenderer.invoke('data:export'),
+    import: () => ipcRenderer.invoke('data:import'),
+    clearSurveillance: () => ipcRenderer.invoke('data:clear-surveillance')
   }
 })

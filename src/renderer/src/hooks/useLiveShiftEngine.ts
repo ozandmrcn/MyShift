@@ -53,6 +53,11 @@ export function computeWorkedSeconds(activities: Activity[], realSecs: number): 
   return worked
 }
 
+// Module-level flag: only ONE mounted engine instance may fire notifications.
+// Dashboard and Timeline each mount their own useLiveShiftEngine; without this,
+// every activity transition produces two identical stacked toasts.
+let notificationOwnerActive = false
+
 export function useLiveShiftEngine() {
   const templates = useShiftStore((state) => state.templates)
   const settings = useShiftStore((state) => state.settings)
@@ -114,7 +119,9 @@ export function useLiveShiftEngine() {
 
   // Resolve today's active shift template
   const activeTemplate = useMemo<ShiftTemplate | null>(() => {
-    const activeTemplates = templates.filter(t => t.isActive)
+    // A template with no activities is not a real shift — treat it as inactive so
+    // it can never become "today's shift" and crash views that assume activities exist.
+    const activeTemplates = templates.filter(t => t.isActive && t.activities.length > 0)
     
     // 1. Check birthday match (Highest priority)
     // If today is user's birthday, look for a template named "Doğum Günü" or "Birthday"
@@ -348,13 +355,19 @@ export function useLiveShiftEngine() {
     window.electronAPI.tray.updateInfo(`${activeTemplate?.name || 'MyShift'} • ${clock} • ${status}`)
   }, [engineState, idleSeconds, timeString, activeTemplate])
 
-  // Handle transitions and notifications (with spam-protection)
+  // Handle transitions and notifications (with spam-protection).
+  // Dashboard AND Timeline each mount their own engine instance; only the first
+  // one may own notifications, otherwise every transition fires duplicated toasts.
   useEffect(() => {
-    if (!activeTemplate) return
+    if (notificationOwnerActive) return
+    notificationOwnerActive = true
+    const release = () => { notificationOwnerActive = false }
+
+    if (!activeTemplate) return release
 
     const realSecs = timeToSeconds(timeString)
     const currentSecs = (realSecs + timeOffset + 86400) % 86400
-    const { currentActivity, isShiftFinished, isBeforeShift, shiftStartSecs, isOvertime } = engineState
+    const { currentActivity, nextActivity, isShiftFinished, isBeforeShift, shiftStartSecs, isOvertime } = engineState
     const currentActivityId = currentActivity?.id || null
 
     // First Run spam protection: Sync states, disable actual notification show/sound
@@ -367,41 +380,64 @@ export function useLiveShiftEngine() {
         setHasNotifiedShiftEnd(true)
       }
       isFirstRun.current = false
-      return
+      return release
     }
 
     // Manual rewind happened → sync state without firing notifications
     if (prevOffset.current !== timeOffset) {
       prevOffset.current = timeOffset
       setPrevActivityId(currentActivityId)
-      return
+      return release
     }
 
     // 1. Shift Started Notification
+    let shiftStartedJustNow = false
     if (currentSecs >= shiftStartSecs && isBeforeShift === false && !hasNotifiedShiftStart && !isShiftFinished && !isOvertime) {
-      window.electronAPI?.notification?.show('MyShift', 'Vardiyanız başladı. İyi çalışmalar!')
+      window.electronAPI?.notification?.show('🌅 Vardiya Başladı', 'Bugünün planı başladı. İyi çalışmalar!')
       playSound(settings.defaultNotificationSound)
       setHasNotifiedShiftStart(true)
+      shiftStartedJustNow = true
     }
 
-    // 2. Activity Changed Notification
-    if (currentActivityId !== prevActivityId) {
+    // 2. Activity Changed Notification — when the shift just started, the first
+    //    activity's toast is redundant with the "Vardiya başladı" toast, so skip it.
+    if (currentActivityId !== prevActivityId && !(shiftStartedJustNow && !prevActivityId)) {
       if (currentActivity) {
         if (currentActivity.notificationEnabled) {
-          const body = `${currentActivity.icon} ${currentActivity.name} başladı.`
-          window.electronAPI?.notification?.show('Aktivite Başladı', body)
+          const mins = currentActivity.duration
+          const durLabel = mins >= 60
+            ? `${Math.floor(mins / 60)} sa ${mins % 60 > 0 ? `${mins % 60} dk` : ''}`.trim()
+            : `${mins} dk`
+          window.electronAPI?.notification?.show(
+            `${currentActivity.icon} ${currentActivity.name}`,
+            `Başlama vakti geldi — ${durLabel}. İyi geçsin!`
+          )
           playSound(currentActivity.notificationSound)
         }
       } else if (prevActivityId && !isShiftFinished && !isBeforeShift && !isOvertime) {
-        window.electronAPI?.notification?.show('Aktivite Tamamlandı', 'Mevcut aktivite bitti, sıradaki aktiviteye kadar serbest zaman.')
+        const nextLabel = nextActivity ? `${nextActivity.icon} ${nextActivity.name}` : 'sıradaki aktivite'
+        window.electronAPI?.notification?.show(
+          '☕ Mola Vakti',
+          `Aktivite bitti. Sıradaki: ${nextLabel}. Bu ara geçen süre aşım olarak sayılır.`
+        )
         playSound('default')
       }
       setPrevActivityId(currentActivityId)
     }
 
-    // 3. Shift Finished Notification
+    // 3. Shift Finished / Overtime Notification
     if ((isShiftFinished || isOvertime) && !hasNotifiedShiftEnd) {
-      window.electronAPI?.notification?.show('MyShift', 'Tebrikler! Bugünün vardiya saatleri tamamlandı.')
+      if (isOvertime) {
+        window.electronAPI?.notification?.show(
+          '⏰ Aşım Başladı',
+          'Vardiya saati doldu — geçen her saniye aşım olarak sayılıyor.'
+        )
+      } else {
+        window.electronAPI?.notification?.show(
+          '🎉 Vardiya Tamamlandı',
+          'Bugünün tüm aktivitelerini bitirdin. Dinlenme zamanı!'
+        )
+      }
       playSound('bell')
       setHasNotifiedShiftEnd(true)
       setPrevActivityId(null)
@@ -417,6 +453,7 @@ export function useLiveShiftEngine() {
       isFirstRun.current = true
     }
 
+    return release
   }, [engineState, timeString, activeTemplate, prevActivityId, hasNotifiedShiftStart, hasNotifiedShiftEnd, settings, timeOffset])
 
   return {

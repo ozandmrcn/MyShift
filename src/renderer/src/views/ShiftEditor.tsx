@@ -2,8 +2,20 @@ import { useState, useEffect } from 'react'
 import { useShiftStore, ShiftTemplate, Activity, calculateDuration } from '../stores/useShiftStore'
 import { playSound } from '../utils/soundEffects'
 
+// ─── Quick Presets ─────────────────────────────────────────────────────────────
+const ACTIVITY_PRESETS: Partial<Activity>[] = [
+  { name: 'Çay Kahve Molası', icon: '☕', color: 'orange', duration: 15 },
+  { name: 'Kahvaltı', icon: '🍳', color: 'orange', duration: 30 },
+  { name: 'Yemek Molası', icon: '🍔', color: 'amber', duration: 30 },
+  { name: 'Çalışma Seansı', icon: '💻', color: 'blue', duration: 90 },
+  { name: 'Toplantı', icon: '💬', color: 'purple', duration: 60 },
+  { name: 'Spor / Egzersiz', icon: '🏃', color: 'red', duration: 45 },
+  { name: 'Okuma', icon: '📚', color: 'indigo', duration: 30 },
+  { name: 'Uyku / Dinlenme', icon: '🛌', color: 'indigo', duration: 480 },
+]
+
 // ─── Constants ────────────────────────────────────────────────────────────────
-const EMOJI_OPTIONS = ['💻', '☕', '🍔', '📚', '🏃', '😴', '🚗', '🎮', '🎨', '🎵', '🏢', '💬', '🧹', '🛒', '🏋️', '🧘', '🛌', '🍕', '✏️', '📝', '🎯', '🔬', '🌿', '🏖️']
+const EMOJI_OPTIONS = ['💻', '☕', '🍔', '📚', '🏃', '😴', '🚗', '🎮', '🎨', '🎵', '🏢', '💬', '🧹', '🛒', '🏋️', '🧘', '🛌', '🍕', '✏️', '📝', '🎯', '🍳', '🌿', '🏖️']
 const COLOR_OPTIONS = [
   { key: 'blue',    label: 'Mavi',   bg: 'bg-blue-500',   ring: 'ring-blue-400',   card: 'bg-blue-500/10 border-blue-500/30 text-blue-300' },
   { key: 'orange',  label: 'Turuncu',bg: 'bg-orange-500', ring: 'ring-orange-400', card: 'bg-orange-500/10 border-orange-500/30 text-orange-300' },
@@ -19,7 +31,6 @@ const SOUND_OPTIONS = [
   { key: 'default', label: 'Varsayılan' },
   { key: 'bell',    label: 'Çan' },
   { key: 'digital', label: 'Dijital' },
-  { key: 'none',    label: 'Sessiz' },
 ]
 
 function getColorCard(colorKey: string) {
@@ -131,6 +142,23 @@ function ActivityModal({
 }) {
   const [form, setForm] = useState<Activity>(activity)
 
+  const applyPreset = (preset: Partial<Activity>) => {
+    // Calculate end time based on current start + preset duration
+    const [sh, sm] = form.startTime.split(':').map(Number)
+    const endMins = sh * 60 + sm + (preset.duration ?? 60)
+    const endH = Math.floor(endMins / 60) % 24
+    const endM = endMins % 60
+    const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
+    setForm({
+      ...form,
+      name: preset.name ?? form.name,
+      icon: preset.icon ?? form.icon,
+      color: preset.color ?? form.color,
+      endTime,
+      duration: preset.duration ?? form.duration
+    })
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (form.startTime >= form.endTime) {
@@ -158,6 +186,29 @@ function ActivityModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-4 max-h-[80vh] overflow-y-auto">
+          {/* Quick Presets — only show for new activities */}
+          {isNew && (
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                ⚡ Hızlı Şablonlar
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {ACTIVITY_PRESETS.map((p, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => applyPreset(p)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 border border-white/5 hover:border-white/10 text-[11px] text-slate-300 font-medium transition-all hover:scale-105"
+                  >
+                    <span>{p.icon}</span>
+                    <span>{p.name}</span>
+                    <span className="text-slate-600 text-[9px]">{p.duration}dk</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Name */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">

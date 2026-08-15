@@ -1,18 +1,124 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useShiftStore } from '../stores/useShiftStore'
+import type { Settings } from '../stores/useShiftStore'
 import { playSound } from '../utils/soundEffects'
 
 const MONTH_NAMES = [
-  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 
+  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
 ]
 
+// Show only a hint of the saved API key (sk-…abcd) so the user can see whether
+// one is stored without ever printing the secret.
+function maskKey(key: string): string {
+  if (!key) return ''
+  if (key.length <= 8) return '••••' + key.slice(-2)
+  return `${key.slice(0, 3)}…${key.slice(-4)}`
+}
+
+// Reusable fluent-style toggle switch (same visual language as the rest of the app)
+function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <label className={`relative inline-flex items-center cursor-pointer flex-shrink-0 ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="sr-only peer"
+      />
+      <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
+    </label>
+  )
+}
+
+// Settings section wrapper
+function Section({ icon, title, description, children }: { icon: string; title: string; description?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-2.5 mb-3">
+        <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-white/5 border border-white/10 text-sm">{icon}</span>
+        <div>
+          <h3 className="text-sm font-semibold text-slate-200">{title}</h3>
+          {description && <p className="text-[10px] text-slate-500">{description}</p>}
+        </div>
+      </div>
+      <div className="flex flex-col rounded-xl border border-white/5 bg-white/2 overflow-hidden">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// One setting row inside a section
+function Row({ icon, title, description, right }: { icon: string; title: string; description?: string; right: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-white/5 last:border-b-0 hover:bg-white/2 transition-colors">
+      <div className="flex items-start gap-3 min-w-0">
+        <span className="text-base flex-shrink-0 mt-0.5">{icon}</span>
+        <div className="min-w-0">
+          <span className="block text-sm font-medium text-slate-200">{title}</span>
+          {description && <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{description}</p>}
+        </div>
+      </div>
+      <div className="flex-shrink-0">{right}</div>
+    </div>
+  )
+}
+
 export default function SettingsView() {
   const { settings, updateSettings } = useShiftStore()
+  const api = window.electronAPI
 
   // Parse birthday state
   const [bDay, setBDay] = useState(1)
   const [bMonth, setBMonth] = useState(1)
+
+  // Advanced (custom provider / model) section, shown for OpenAI
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
+  // API key is saved explicitly (it's a secret) — the input holds a draft until
+  // the user presses "Kaydet", so it never auto-persists on every keystroke.
+  const [keyDraft, setKeyDraft] = useState(settings.commentApiKey)
+  const [keySavedFlash, setKeySavedFlash] = useState(false)
+
+  // Live AI connection check — "anahtarı ekledim mi, AI çalışıyor mu?"
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<AiTestResult | null>(null)
+
+  // OpenRouter's current free model lineup (fetched live from their API).
+  const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModelInfo[] | null>(null)
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [modelsError, setModelsError] = useState(false)
+
+  const loadOpenRouterModels = useCallback(async () => {
+    if (!api?.ai?.getOpenRouterModels) return
+    setModelsLoading(true)
+    setModelsError(false)
+    try {
+      const list = await api.ai.getOpenRouterModels()
+      setOpenRouterModels(list)
+      // Default to the best (largest context) free model if nothing sensible is set.
+      if (list.length > 0) {
+        const st = useShiftStore.getState().settings
+        const cur = st.commentModel.trim()
+        if (!cur || cur === 'gpt-4o-mini' || cur === 'qwen2.5' || !list.some(m => m.id === cur)) {
+          updateSettings({ commentModel: list[0].id })
+        }
+      }
+    } catch {
+      setModelsError(true)
+    } finally {
+      setModelsLoading(false)
+    }
+  }, [api, updateSettings])
+
+  // Load the free models whenever OpenRouter is the active provider.
+  useEffect(() => {
+    if (settings.commentProvider === 'openrouter') {
+      void loadOpenRouterModels()
+    }
+  }, [settings.commentProvider, loadOpenRouterModels])
 
   // Sync state on load
   useEffect(() => {
@@ -24,6 +130,11 @@ export default function SettingsView() {
       }
     }
   }, [settings.birthday])
+
+  // Keep the key draft in sync whenever the saved key changes from elsewhere.
+  useEffect(() => {
+    setKeyDraft(settings.commentApiKey)
+  }, [settings.commentApiKey])
 
   const handleTestSound = () => {
     playSound(settings.defaultNotificationSound)
@@ -37,130 +148,424 @@ export default function SettingsView() {
     updateSettings({ birthday: `${monthStr}-${dayStr}` })
   }
 
+  const handleSaveApiKey = () => {
+    updateSettings({ commentApiKey: keyDraft.trim() })
+    setKeySavedFlash(true)
+    setTimeout(() => setKeySavedFlash(false), 2500)
+  }
+
+  const handleTestAi = async () => {
+    if (!api?.ai?.test) return
+    setTesting(true)
+    setTestResult(null)
+    try {
+      setTestResult(await api.ai.test())
+    } catch {
+      setTestResult({ ok: false, detail: 'Test isteği iletilemedi (dahili hata).', elapsedMs: 0 })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const handleProviderChange = (p: Settings['commentProvider']) => {
+    const patch: Partial<Settings> = { commentProvider: p }
+    if (p === 'openai') {
+      // "API anahtarını gir, gerisi benim." — prefill the OpenAI endpoint and a
+      // sane model so the user only has to paste the key.
+      const base = settings.commentBaseUrl.trim()
+      if (!base || base === 'http://127.0.0.1:11434' || base === 'https://openrouter.ai/api/v1') patch.commentBaseUrl = 'https://api.openai.com/v1'
+      if (!settings.commentModel.trim() || settings.commentModel.trim() === 'qwen2.5') patch.commentModel = 'gpt-4o-mini'
+    } else if (p === 'openrouter') {
+      // OpenRouter is OpenAI-compatible; pin its endpoint so the user only has
+      // to paste the key and pick a model from the live free list.
+      if (settings.commentBaseUrl.trim() !== 'https://openrouter.ai/api/v1') patch.commentBaseUrl = 'https://openrouter.ai/api/v1'
+      if (settings.commentModel.trim() === 'gpt-4o-mini') patch.commentModel = ''
+    } else if (p === 'ollama') {
+      const base = settings.commentBaseUrl.trim()
+      if (!base || base === 'https://openrouter.ai/api/v1' || base === 'https://api.openai.com/v1') patch.commentBaseUrl = 'http://127.0.0.1:11434'
+      if (!settings.commentModel.trim() || settings.commentModel.trim() === 'gpt-4o-mini') patch.commentModel = 'qwen2.5'
+    }
+    updateSettings(patch)
+  }
+
   return (
-    <div className="max-w-2xl mx-auto fluent-card p-6 flex flex-col gap-6">
-      <div>
-        <h2 className="text-xl font-semibold text-slate-200">Uygulama Ayarları</h2>
-        <p className="text-xs text-slate-400 mt-1">Uygulama açılış, tepsi ve genel bildirim tercihlerini yönetin.</p>
-      </div>
-
-      <div className="flex flex-col gap-4 border-t border-white/5 pt-4">
-        
-        {/* Startup integration */}
-        <div className="flex justify-between items-start py-3 border-b border-white/5">
+    <div className="h-full overflow-y-auto pr-1">
+      <div className="max-w-2xl mx-auto flex flex-col gap-6 pb-2">
+        {/* Page header */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-xl shadow-lg shadow-blue-500/10">
+            ⚙️
+          </div>
           <div>
-            <span className="text-sm font-medium text-slate-200">Windows ile Birlikte Başlat</span>
-            <p className="text-xs text-slate-400 mt-0.5">Bilgisayarınız açıldığında MyShift otomatik olarak başlasın.</p>
+            <h2 className="text-xl font-semibold text-slate-100">Uygulama Ayarları</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Açılış, tepsi ve bildirim tercihlerinizi yönetin.</p>
           </div>
-          <input 
-            type="checkbox" 
-            checked={settings.launchWithWindows}
-            onChange={(e) => updateSettings({ launchWithWindows: e.target.checked })}
-            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+        </div>
+
+        {/* Startup & Tray */}
+        <Section
+          icon="🚀"
+          title="Başlangıç ve Tepsi"
+          description="Uygulamanın açılış ve sistem tepsi davranışı"
+        >
+          <Row
+            icon="🖥️"
+            title="Windows ile Birlikte Başlat"
+            description="Bilgisayarınız açıldığında MyShift otomatik olarak başlasın."
+            right={
+              <Toggle
+                checked={settings.launchWithWindows}
+                onChange={(v) => updateSettings({ launchWithWindows: v })}
+              />
+            }
           />
-        </div>
-
-        {/* Start minimized */}
-        <div className="flex justify-between items-start py-3 border-b border-white/5">
-          <div>
-            <span className="text-sm font-medium text-slate-200">Küçültülmüş Olarak Başlat (Sistem Tepsisi)</span>
-            <p className="text-xs text-slate-400 mt-0.5">Uygulama başladığında ekranda görünmeden doğrudan sistem tepsisine küçülsün.</p>
-          </div>
-          <input 
-            type="checkbox" 
-            checked={settings.startMinimized}
-            disabled={!settings.launchWithWindows}
-            onChange={(e) => updateSettings({ startMinimized: e.target.checked })}
-            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-30"
+          <Row
+            icon="📉"
+            title="Küçültülmüş Olarak Başlat"
+            description="Ekranda görünmeden doğrudan sistem tepsisine küçülerek başlasın."
+            right={
+              <Toggle
+                checked={settings.startMinimized}
+                disabled={!settings.launchWithWindows}
+                onChange={(v) => updateSettings({ startMinimized: v })}
+              />
+            }
           />
-        </div>
-
-        {/* Minimize to tray on close */}
-        <div className="flex justify-between items-start py-3 border-b border-white/5">
-          <div>
-            <span className="text-sm font-medium text-slate-200">Kapatıldığında Sistem Tepsisine Küçült</span>
-            <p className="text-xs text-slate-400 mt-0.5">Pencereyi kapat butonuna bastığınızda uygulama tamamen kapanmak yerine arka planda çalışmaya devam eder.</p>
-          </div>
-          <input 
-            type="checkbox" 
-            checked={settings.minimizeToTray}
-            onChange={(e) => updateSettings({ minimizeToTray: e.target.checked })}
-            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+          <Row
+            icon="🌱"
+            title="Açılışta Göster, Sonra Tepsiye Küçült"
+            description="Kısa süre görünür, etkileşime girilmezse tepsiye küçülür."
+            right={
+              <Toggle
+                checked={settings.autoMinimizeToTray}
+                disabled={!settings.launchWithWindows}
+                onChange={(v) => updateSettings({ autoMinimizeToTray: v })}
+              />
+            }
           />
-        </div>
-
-        {/* Auto-minimize to tray on launch */}
-        <div className="flex justify-between items-start py-3 border-b border-white/5">
-          <div>
-            <span className="text-sm font-medium text-slate-200">Açılışta Göster, Sonra Tepsiye Küçült</span>
-            <p className="text-xs text-slate-400 mt-0.5">Uygulama açılışta kısa süre ekranda görünür, ardından sistem tepsisine küçülür. Bu sırada pencereyle etkileşime girerseniz açık kalır.</p>
-          </div>
-          <input 
-            type="checkbox" 
-            checked={settings.autoMinimizeToTray}
-            disabled={!settings.launchWithWindows}
-            onChange={(e) => updateSettings({ autoMinimizeToTray: e.target.checked })}
-            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-30"
+          <Row
+            icon="🚪"
+            title="Kapatıldığında Tepsiye Küçült"
+            description="Kapat butonu uygulamayı bitirmez, arka planda çalışmaya devam eder."
+            right={
+              <Toggle
+                checked={settings.minimizeToTray}
+                onChange={(v) => updateSettings({ minimizeToTray: v })}
+              />
+            }
           />
+        </Section>
+
+        {/* Notifications */}
+        <Section
+          icon="🔔"
+          title="Bildirimler"
+          description="Genel vardiya geçişleri için varsayılan ses"
+        >
+          <Row
+            icon="🎵"
+            title="Varsayılan Bildirim Sesi"
+            description="Vardiya başlangıcı ve genel geçişlerde çalınacak ses."
+            right={
+              <div className="flex items-center gap-2">
+                <select
+                  value={settings.defaultNotificationSound}
+                  onChange={(e) => updateSettings({ defaultNotificationSound: e.target.value })}
+                  className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="default">Varsayılan</option>
+                  <option value="bell">Çan</option>
+                  <option value="digital">Dijital</option>
+                  <option value="none">Sessiz</option>
+                </select>
+                <button
+                  onClick={handleTestSound}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] px-3 py-1.5 rounded-lg border border-white/5 font-semibold transition-colors whitespace-nowrap"
+                >
+                  ▶ Test Et
+                </button>
+              </div>
+            }
+          />
+        </Section>
+
+        {/* Comments / AI */}
+        <Section
+          icon="💬"
+          title="Yorumlar"
+          description="Saat altındaki tek satırlık yorumu kim yazsın?"
+        >
+          <Row
+            icon="🧠"
+            title="Yorum Kaynağı"
+            description="Ollama (yerel) veya OpenAI uyumlu bir API kullanılabilir; yoksa yerleşik motor devreye girer. AI ayarlıyken yorumlar gerçek zamanlı davranışınıza göre yazılır."
+            right={
+              <select
+                value={settings.commentProvider}
+                onChange={(e) => handleProviderChange(e.target.value as Settings['commentProvider'])}
+                className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+              >
+                <option value="offline">Yerleşik Motor</option>
+                <option value="ollama">Ollama (Yerel)</option>
+                <option value="openai">OpenAI Uyumlu API</option>
+                <option value="openrouter">OpenRouter (Ücretsiz Modeller)</option>
+              </select>
+            }
+          />
+          {settings.commentProvider !== 'offline' && (
+            <>
+              {settings.commentProvider === 'ollama' && (
+                <>
+                  <Row
+                    icon="🔗"
+                    title="Sunucu Adresi (Base URL)"
+                    description="Ollama varsayılanı: http://127.0.0.1:11434"
+                    right={
+                      <input
+                        type="text"
+                        value={settings.commentBaseUrl}
+                        onChange={(e) => updateSettings({ commentBaseUrl: e.target.value })}
+                        placeholder="http://127.0.0.1:11434"
+                        className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 w-52"
+                      />
+                    }
+                  />
+                  <Row
+                    icon="📦"
+                    title="Model"
+                    description="Örn: qwen2.5, llama3.1"
+                    right={
+                      <input
+                        type="text"
+                        value={settings.commentModel}
+                        onChange={(e) => updateSettings({ commentModel: e.target.value })}
+                        className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 w-40"
+                      />
+                    }
+                  />
+                </>
+              )}
+
+              {(settings.commentProvider === 'openai' || settings.commentProvider === 'openrouter') && (
+                <>
+                  <div className="px-4 py-3 border-b border-white/5">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <span className="text-base flex-shrink-0 mt-0.5">🔑</span>
+                      <div className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-slate-200">API Anahtarı</span>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                          Anahtarı yapıştırıp <span className="text-slate-300">Kaydet</span>'e basın. Yalnızca bu bilgisayarda saklanır; yorum üretirken doğrudan sağlayıcıya gider.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-3">
+                      <input
+                        type="password"
+                        value={keyDraft}
+                        onChange={(e) => setKeyDraft(e.target.value)}
+                        placeholder={settings.commentProvider === 'openrouter' ? 'sk-or-v1-...' : 'sk-...'}
+                        className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+                      />
+                      <button
+                        onClick={handleSaveApiKey}
+                        className="bg-blue-600 hover:bg-blue-500 text-white text-[11px] px-3 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap"
+                      >
+                        {keySavedFlash ? '✓ Kaydedildi' : '💾 Kaydet'}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-2">
+                      {settings.commentApiKey
+                        ? `✅ Kayıtlı anahtar: ${maskKey(settings.commentApiKey)}`
+                        : '⚠️ Henüz kayıtlı anahtar yok — yukarıdaki alana yapıştırıp Kaydet\'e basın.'}
+                    </p>
+                  </div>
+
+                  {settings.commentProvider === 'openai' && (
+                    <>
+                      <div className="px-4 py-2 border-b border-white/5">
+                        <button
+                          onClick={() => setShowAdvanced(v => !v)}
+                          className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
+                        >
+                          {showAdvanced ? '▾ Gelişmiş Ayarları Gizle' : '▸ Gelişmiş: Özel Sağlayıcı / Model Kullan'}
+                        </button>
+                      </div>
+                      {showAdvanced && (
+                        <>
+                          <Row
+                            icon="🔗"
+                            title="Sunucu Adresi (Base URL)"
+                            description="OpenAI uyumlu başka bir sağlayıcı (Groq vb.) kullanmak için değiştirin."
+                            right={
+                              <input
+                                type="text"
+                                value={settings.commentBaseUrl}
+                                onChange={(e) => updateSettings({ commentBaseUrl: e.target.value })}
+                                placeholder="https://api.openai.com/v1"
+                                className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 w-52"
+                              />
+                            }
+                          />
+                          <Row
+                            icon="📦"
+                            title="Model"
+                            description="Örn: gpt-4o-mini, gpt-4.1-mini"
+                            right={
+                              <input
+                                type="text"
+                                value={settings.commentModel}
+                                onChange={(e) => updateSettings({ commentModel: e.target.value })}
+                                className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 w-40"
+                              />
+                            }
+                          />
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  {settings.commentProvider === 'openrouter' && (
+                    <div className="px-4 py-3 border-b border-white/5">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <span className="text-base flex-shrink-0 mt-0.5">📦</span>
+                        <div className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-slate-200">Model (güncel ücretsizler)</span>
+                          <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                            OpenRouter'daki <span className="text-slate-300">:free</span> modeller anlık listelenir. Ücretsiz modeller zamanla eklenip kaldırılabilir — listeden seçmeniz yeterli.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-3">
+                        {modelsLoading ? (
+                          <div className="flex-1 text-xs text-slate-400 py-2 animate-pulse">Ücretsiz modeller yükleniyor…</div>
+                        ) : modelsError ? (
+                          <div className="flex-1 text-xs text-rose-400 py-2">Liste alınamadı — internet bağlantınızı kontrol edin.</div>
+                        ) : openRouterModels && openRouterModels.length > 0 ? (
+                          <select
+                            value={settings.commentModel}
+                            onChange={(e) => updateSettings({ commentModel: e.target.value })}
+                            className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+                          >
+                            {openRouterModels.map(m => (
+                              <option key={m.id} value={m.id}>
+                                {m.id}{m.context_length > 0 ? ` (${Math.round(m.context_length / 1024)}K ctx)` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="flex-1 text-xs text-slate-500 py-2">Liste boş — bir süre sonra tekrar deneyin.</div>
+                        )}
+                        <button
+                          onClick={() => void loadOpenRouterModels()}
+                          disabled={modelsLoading}
+                          className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-[11px] px-3 py-2 rounded-lg border border-white/5 font-semibold transition-colors whitespace-nowrap"
+                          title="Listeyi yenile"
+                        >
+                          ↻ Yenile
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-2">
+                        {settings.commentApiKey
+                          ? '✅ Anahtar kayıtlı — aşağıdan test edebilirsiniz.'
+                          : '⚠️ Önce yukarıdaki alana OpenRouter anahtarınızı yapıştırıp Kaydet\'e basın.'}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="px-4 py-3 border-b border-white/5 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <span className="block text-sm font-medium text-slate-200">🔬 AI Bağlantısını Test Et</span>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      Gerçek bir istek gönderilir: anahtar geçerli mi, sunucu erişilebilir mi, model yanıt veriyor mu — anında görürsünüz.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleTestAi}
+                    disabled={testing}
+                    className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-[11px] px-3 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap flex-shrink-0"
+                  >
+                    {testing ? 'Test Ediliyor…' : '▶ Test Et'}
+                  </button>
+                </div>
+
+                {testing && (
+                  <p className="text-[10px] text-slate-400 animate-pulse">İstek gönderiliyor, yanıt bekleniyor…</p>
+                )}
+
+                {!testing && testResult && (
+                  <div className={`px-3 py-2.5 rounded-lg border text-[11px] leading-relaxed ${
+                    testResult.ok
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                      : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                  }`}>
+                    <span className="font-semibold">{testResult.ok ? '✓ Çalışıyor' : '✗ Sorun var'}</span>
+                    <span className="text-slate-400"> — {testResult.detail}</span>
+                    {testResult.elapsedMs > 0 && (
+                      <span className="block text-[9px] text-slate-500 mt-0.5 font-mono">Yanıt süresi: {testResult.elapsedMs} ms</span>
+                    )}
+                  </div>
+                )}
+
+                {!testing && !testResult && (
+                  <p className="text-[10px] text-slate-600">
+                    Henüz test yapılmadı. Sorun varsa ayrıntı burada görünür.
+                  </p>
+                )}
+              </div>
+
+              <div className="px-4 py-3 border-t border-white/5">
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  Not: Bu ayar açıkken yorum bağlamı (aktif aktivite, açık uygulama, şarkı başlığı vb.)
+                  seçtiğiniz sağlayıcıya gönderilir. AI yanıt vermezse yerleşik motor devreye girer.
+                </p>
+              </div>
+            </>
+          )}
+        </Section>
+
+        {/* Birthday */}
+        <Section
+          icon="🎂"
+          title="Tatil"
+          description="Özel günlerde otomatik şablon seçimi"
+        >
+          <Row
+            icon="📅"
+            title="Doğum Günü Tatili"
+            description='"Doğum Günü" veya "Birthday" isimli şablon otomatik etkinleşir.'
+            right={
+              <div className="flex gap-1.5">
+                <select
+                  value={bDay}
+                  onChange={(e) => handleBirthdayChange(Number(e.target.value), bMonth)}
+                  className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  {Array.from({ length: 31 }).map((_, i) => (
+                    <option key={i + 1} value={i + 1}>{i + 1}</option>
+                  ))}
+                </select>
+                <select
+                  value={bMonth}
+                  onChange={(e) => handleBirthdayChange(bDay, Number(e.target.value))}
+                  className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  {MONTH_NAMES.map((name, i) => (
+                    <option key={i + 1} value={i + 1}>{name}</option>
+                  ))}
+                </select>
+              </div>
+            }
+          />
+        </Section>
+
+        {/* Footer */}
+        <div className="border-t border-white/5 pt-4 text-center">
+          <span className="text-[10px] text-slate-600 block">MyShift v1.0.0 • Çevrimdışı Kişisel Vardiya Sistemi</span>
+          <span className="text-[10px] text-slate-600 block mt-0.5">Windows 10/11 Fluent Design</span>
         </div>
-
-        {/* Birthday Setting */}
-        <div className="flex justify-between items-start py-3 border-b border-white/5">
-          <div className="mr-4">
-            <span className="text-sm font-medium text-slate-200">Doğum Günü Tatili</span>
-            <p className="text-xs text-slate-400 mt-0.5">Doğum gününüzde sistem otomatik olarak "Doğum Günü" veya "Birthday" isimli şablonu aktif eder.</p>
-          </div>
-          <div className="flex gap-2">
-            <select
-              value={bDay}
-              onChange={(e) => handleBirthdayChange(Number(e.target.value), bMonth)}
-              className="bg-slate-950 border border-white/10 rounded-lg p-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-            >
-              {Array.from({ length: 31 }).map((_, i) => (
-                <option key={i + 1} value={i + 1}>{i + 1}</option>
-              ))}
-            </select>
-            <select
-              value={bMonth}
-              onChange={(e) => handleBirthdayChange(bDay, Number(e.target.value))}
-              className="bg-slate-950 border border-white/10 rounded-lg p-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-            >
-              {MONTH_NAMES.map((name, i) => (
-                <option key={i + 1} value={i + 1}>{name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Default notification sound */}
-        <div className="flex justify-between items-end py-3">
-          <div className="flex-1 mr-4">
-            <span className="text-sm font-medium text-slate-200">Varsayılan Bildirim Sesi</span>
-            <p className="text-xs text-slate-400 mt-0.5">Genel vardiya geçişleri ve varsayılan aktiviteler için çalınacak ses.</p>
-            <select
-              value={settings.defaultNotificationSound}
-              onChange={(e) => updateSettings({ defaultNotificationSound: e.target.value })}
-              className="mt-2 w-full max-w-[200px] bg-slate-950 border border-white/10 rounded-lg p-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-            >
-              <option value="default">VARSAYILAN</option>
-              <option value="bell">ÇAN (WARM BELL)</option>
-              <option value="digital">DİJİTAL BİP</option>
-              <option value="none">SESSİZ</option>
-            </select>
-          </div>
-          <button
-            onClick={handleTestSound}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-4 py-2.5 rounded-lg border border-white/5 font-semibold transition-colors"
-          >
-            Sesi Test Et
-          </button>
-        </div>
-
-      </div>
-
-      <div className="border-t border-white/5 pt-4 text-center">
-        <span className="text-[10px] text-slate-600 block">MyShift v1.0.0 • Çevrimdışı Kişisel Vardiya Sistemi</span>
-        <span className="text-[10px] text-slate-600 block mt-0.5">Windows 10/11 Fluent Design</span>
       </div>
     </div>
   )
