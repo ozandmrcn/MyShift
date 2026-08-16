@@ -3,7 +3,7 @@
 @layer base {
   html, body {
     background-color: transparent;
-    color: #f8fafc;
+    color: var(--color-slate-100);
     font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
     margin: 0;
     padding: 0;
@@ -23,42 +23,42 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--color-white) 15%, transparent);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: color-mix(in srgb, var(--color-white) 30%, transparent);
 }
 
 /* Fluent Glassmorphism Utilities */
 .fluent-acrylic {
-  background: rgba(30, 41, 59, 0.65);
+  background: color-mix(in srgb, var(--color-white) 8%, transparent);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--card-border);
 }
 
 .fluent-mica {
-  background: rgba(20, 24, 33, 0.8);
+  background: var(--card-bg);
   backdrop-filter: blur(30px);
   -webkit-backdrop-filter: blur(30px);
 }
 
 .fluent-border {
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--card-border);
 }
 
 .fluent-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: 8px;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .fluent-card:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--card-bg-hover);
+  border-color: var(--card-border-hover);
 }
 
 /* Reminder banner auto-dismiss progress bar (shrinks over 60s) */
@@ -77,4 +77,212 @@
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+/* ── Themes ─────────────────────────────────────────────────────────────────────
+   These are GENERAL themes: each one re-tints the whole UI — app backdrop, card
+   surfaces, borders and the entire slate text scale — not just buttons/accents.
+   They override Tailwind's own --color-slate-* / --color-white tokens (which the
+   compiled utilities reference via var()), so every slate/white class in the app
+   picks up the tint automatically. All themes stay dark Mica-based. */
+:root,
+[data-theme='mavi'] {
+  --color-slate-950: #020617;
+  --color-slate-900: #0f172a;
+  --color-slate-800: #1e293b;
+  --color-slate-700: #334155;
+  --color-slate-600: #475569;
+  --color-slate-500: #64748b;
+  --color-slate-400: #94a3b8;
+  --color-slate-300: #cbd5e1;
+  --color-slate-200: #e2e8f0;
+  --color-slate-100: #f1f5f9;
+  --color-white: #ffffff;
+  --app-bg: radial-gradient(120% 90% at 15% -10%, rgba(59, 130, 246, 0.1), transparent 55%);
+  --accent-300: #93c5fd;
+  --accent-400: #60a5fa;
+  --accent-500: #3b82f6;
+  --accent-600: #2563eb;
+  --accent-soft: rgba(59, 130, 246, 0.12);
+  --accent-soft-hover: rgba(59, 130, 246, 0.2);
+  --accent-border-soft: rgba(59, 130, 246, 0.3);
+  --accent-glow: rgba(59, 130, 246, 0.2);
+  --accent-heat-1: rgba(30, 58, 138, 0.6);
+  --accent-heat-2: rgba(37, 99, 235, 0.6);
+  --accent-heat-3: rgba(59, 130, 246, 0.7);
+  --accent-heat-4: rgba(96, 165, 250, 0.8);
+  --card-bg: color-mix(in srgb, var(--color-white) 4%, transparent);
+  --card-bg-hover: color-mix(in srgb, var(--color-white) 8%, transparent);
+  --card-border: color-mix(in srgb, var(--color-white) 6%, transparent);
+  --card-border-hover: color-mix(in srgb, var(--color-white) 12%, transparent);
+}
+
+[data-theme='zurut'] {
+  --color-slate-950: #04110c;
+  --color-slate-900: #0a1f16;
+  --color-slate-800: #123226;
+  --color-slate-700: #1e4434;
+  --color-slate-600: #2c5843;
+  --color-slate-500: #3e6e56;
+  --color-slate-400: #6f9a84;
+  --color-slate-300: #a8ccb9;
+  --color-slate-200: #cfe5d9;
+  --color-slate-100: #e7f3ed;
+  --color-white: #e9f5ef;
+  --app-bg: radial-gradient(120% 90% at 15% -10%, rgba(16, 185, 129, 0.13), transparent 55%);
+  --accent-300: #6ee7b7;
+  --accent-400: #34d399;
+  --accent-500: #10b981;
+  --accent-600: #059669;
+  --accent-soft: rgba(16, 185, 129, 0.12);
+  --accent-soft-hover: rgba(16, 185, 129, 0.2);
+  --accent-border-soft: rgba(16, 185, 129, 0.3);
+  --accent-glow: rgba(16, 185, 129, 0.2);
+  --accent-heat-1: rgba(6, 78, 59, 0.6);
+  --accent-heat-2: rgba(4, 120, 87, 0.6);
+  --accent-heat-3: rgba(16, 185, 129, 0.7);
+  --accent-heat-4: rgba(52, 211, 153, 0.8);
+}
+
+[data-theme='turkuaz'] {
+  --color-slate-950: #021412;
+  --color-slate-900: #072624;
+  --color-slate-800: #0d3a37;
+  --color-slate-700: #164e4a;
+  --color-slate-600: #235f5a;
+  --color-slate-500: #347c76;
+  --color-slate-400: #69a8a2;
+  --color-slate-300: #a3d2cd;
+  --color-slate-200: #c9e9e5;
+  --color-slate-100: #e3f5f3;
+  --color-white: #e5f6f4;
+  --app-bg: radial-gradient(120% 90% at 15% -10%, rgba(20, 184, 166, 0.13), transparent 55%);
+  --accent-300: #5eead4;
+  --accent-400: #2dd4bf;
+  --accent-500: #14b8a6;
+  --accent-600: #0d9488;
+  --accent-soft: rgba(20, 184, 166, 0.12);
+  --accent-soft-hover: rgba(20, 184, 166, 0.2);
+  --accent-border-soft: rgba(20, 184, 166, 0.3);
+  --accent-glow: rgba(20, 184, 166, 0.2);
+  --accent-heat-1: rgba(19, 78, 74, 0.6);
+  --accent-heat-2: rgba(15, 118, 110, 0.6);
+  --accent-heat-3: rgba(20, 184, 166, 0.7);
+  --accent-heat-4: rgba(45, 212, 191, 0.8);
+}
+
+[data-theme='menekse'] {
+  --color-slate-950: #0b0617;
+  --color-slate-900: #170d2e;
+  --color-slate-800: #241649;
+  --color-slate-700: #32205f;
+  --color-slate-600: #432e72;
+  --color-slate-500: #5b478f;
+  --color-slate-400: #8b79b9;
+  --color-slate-300: #bdb0dd;
+  --color-slate-200: #dcd3ef;
+  --color-slate-100: #eee9f9;
+  --color-white: #f0ebfb;
+  --app-bg: radial-gradient(120% 90% at 15% -10%, rgba(139, 92, 246, 0.15), transparent 55%);
+  --accent-300: #c4b5fd;
+  --accent-400: #a78bfa;
+  --accent-500: #8b5cf6;
+  --accent-600: #7c3aed;
+  --accent-soft: rgba(139, 92, 246, 0.12);
+  --accent-soft-hover: rgba(139, 92, 246, 0.2);
+  --accent-border-soft: rgba(139, 92, 246, 0.3);
+  --accent-glow: rgba(139, 92, 246, 0.2);
+  --accent-heat-1: rgba(46, 16, 101, 0.6);
+  --accent-heat-2: rgba(91, 33, 182, 0.6);
+  --accent-heat-3: rgba(139, 92, 246, 0.7);
+  --accent-heat-4: rgba(167, 139, 250, 0.8);
+}
+
+[data-theme='kiraz'] {
+  --color-slate-950: #130608;
+  --color-slate-900: #240d12;
+  --color-slate-800: #38151e;
+  --color-slate-700: #4b1e2a;
+  --color-slate-600: #5f2d39;
+  --color-slate-500: #7d4652;
+  --color-slate-400: #a87881;
+  --color-slate-300: #d3b1b8;
+  --color-slate-200: #e9d4d9;
+  --color-slate-100: #f5e9eb;
+  --color-white: #f6ebed;
+  --app-bg: radial-gradient(120% 90% at 15% -10%, rgba(244, 63, 94, 0.14), transparent 55%);
+  --accent-300: #fda4af;
+  --accent-400: #fb7185;
+  --accent-500: #f43f5e;
+  --accent-600: #e11d48;
+  --accent-soft: rgba(244, 63, 94, 0.12);
+  --accent-soft-hover: rgba(244, 63, 94, 0.2);
+  --accent-border-soft: rgba(244, 63, 94, 0.3);
+  --accent-glow: rgba(244, 63, 94, 0.2);
+  --accent-heat-1: rgba(76, 5, 25, 0.6);
+  --accent-heat-2: rgba(159, 18, 57, 0.6);
+  --accent-heat-3: rgba(244, 63, 94, 0.7);
+  --accent-heat-4: rgba(251, 113, 133, 0.8);
+}
+
+[data-theme='kehribar'] {
+  --color-slate-950: #131004;
+  --color-slate-900: #241d09;
+  --color-slate-800: #372c10;
+  --color-slate-700: #493b16;
+  --color-slate-600: #5d4c1f;
+  --color-slate-500: #7a652f;
+  --color-slate-400: #a58d52;
+  --color-slate-300: #d3bf8e;
+  --color-slate-200: #e9dcb6;
+  --color-slate-100: #f4eed8;
+  --color-white: #f6f0dc;
+  --app-bg: radial-gradient(120% 90% at 15% -10%, rgba(245, 158, 11, 0.13), transparent 55%);
+  --accent-300: #fcd34d;
+  --accent-400: #fbbf24;
+  --accent-500: #f59e0b;
+  --accent-600: #d97706;
+  --accent-soft: rgba(245, 158, 11, 0.12);
+  --accent-soft-hover: rgba(245, 158, 11, 0.2);
+  --accent-border-soft: rgba(245, 158, 11, 0.3);
+  --accent-glow: rgba(245, 158, 11, 0.2);
+  --accent-heat-1: rgba(69, 26, 3, 0.6);
+  --accent-heat-2: rgba(146, 64, 14, 0.6);
+  --accent-heat-3: rgba(245, 158, 11, 0.7);
+  --accent-heat-4: rgba(251, 191, 36, 0.8);
+}
+
+/* App backdrop — the root container paints the full themed background */
+.app-bg {
+  background-color: var(--color-slate-950);
+  background-image: var(--app-bg);
+}
+
+/* Accent utilities — replace hardcoded blue-* with these so themes work everywhere */
+@layer utilities {
+  .accent-solid { background-color: var(--accent-500); }
+  .accent-solid-strong { background-color: var(--accent-600); }
+  .accent-solid-hover:hover { background-color: var(--accent-500); }
+  .accent-soft { background-color: var(--accent-soft); }
+  .accent-soft-hover:hover { background-color: var(--accent-soft-hover); }
+  .accent-soft-faint { background-color: color-mix(in srgb, var(--accent-500) 6%, transparent); }
+  .accent-text { color: var(--accent-400); }
+  .accent-text-soft { color: var(--accent-300); }
+  .accent-text-hover:hover { color: var(--accent-300); }
+  .accent-border { border-color: var(--accent-500); }
+  .accent-border-soft { border-color: var(--accent-border-soft); }
+  .focus-accent:focus { border-color: var(--accent-500); }
+  .accent-glow { box-shadow: 0 4px 14px -2px var(--accent-glow); }
+  .accent-glow-lg { box-shadow: 0 10px 15px -3px var(--accent-glow), 0 4px 6px -4px var(--accent-glow); }
+  .accent-grad-t { background-image: linear-gradient(to top, var(--accent-600), var(--accent-400)); }
+  .accent-grad-t-dull { background-image: linear-gradient(to top, color-mix(in srgb, var(--accent-600) 80%, #0b1120), color-mix(in srgb, var(--accent-500) 60%, #0b1120)); }
+  .accent-grad-h { background-image: linear-gradient(to right, var(--accent-500), var(--accent-600)); }
+  .accent-heat-1 { background-color: var(--accent-heat-1); }
+  .accent-heat-2 { background-color: var(--accent-heat-2); }
+  .accent-heat-3 { background-color: var(--accent-heat-3); }
+  .accent-heat-4 { background-color: var(--accent-heat-4); }
+  .accent-ring { --tw-ring-color: var(--accent-400); }
+  /* Fluent toggle switch — track turns accent-colored when checked */
+  .toggle-checked { transition: background-color 0.2s; }
+  .peer:checked ~ .toggle-checked { background-color: var(--accent-600); }
 }

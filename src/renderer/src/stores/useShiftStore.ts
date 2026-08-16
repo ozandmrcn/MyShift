@@ -53,6 +53,10 @@ export interface Settings {
   defaultNotificationSound: string
   birthday: string // "MM-DD"
 
+  // UI theme — one of the accent themes defined in index.css (e.g. 'mavi', 'zurut'...).
+  // Defaults to 'mavi' (Gece Mavisi) so the app never drifts far from the classic look.
+  theme: string
+
   // Comment engine — who writes the one-liner under the clock.
   // 'offline' = built-in generative engine (always works, no network).
   // 'ollama' / 'openai' / 'openrouter' = a local / remote LLM writes fresh lines instead.
@@ -66,8 +70,12 @@ export interface Settings {
   mode: 'myshift' | 'pay'
 
   // Pay mode configuration.
+  // payTargetMode: 'window' = fixed start/end hours (classic); 'duration' = fixed
+  // total work minutes owed today — remaining shrinks as the user works.
+  payTargetMode: 'window' | 'duration'
   payShiftStart: string // "HH:mm"
   payShiftEnd: string // "HH:mm"
+  payDurationMin: number // toplam çalışılacak süre (duration mode), e.g. 60
   payShortBreakMin: number // kısa mola (çay/kahve/ihtiyaç) daily budget in minutes
   payMealBreakMin: number // yemek molası (kahvaltı/öğle/akşam) daily budget in minutes
   payWorkReminderMin: number // 0=kapalı — bu kadar dk aralıksız çalışınca mola hatırlatır (örn. 50)
@@ -124,6 +132,11 @@ interface ShiftStore {
   idleStartTs: number | null // Date.now() when the current idle session started (null = not idle)
   idleDay: string // "YYYY-MM-DD" the counter currently belongs to (drives the daily auto-reset)
 
+  // MyShift confirmation gate — work activities the user confirmed as finished.
+  // A work activity (after the first of the day) only advances once confirmed;
+  // until then every extra second counts as aşım. Breaks never need confirmation.
+  confirmedActivities: string[] // activity ids confirmed today
+
   // Day's GROSS aşım log — keeps accruing, is never reduced by payback or by resetIdle,
   // and resets only at the day change. It exists purely to record how much aşım was
   // accrued today (the live net counter, by contrast, goes down while payback runs).
@@ -133,6 +146,13 @@ interface ShiftStore {
   // active payback subtracts from the aşım counter; its own stopwatch stays independent.
   paybackAccumMs: number // accumulated payback ms (closed sessions)
   paybackStartTs: number | null // Date.now() while a payback session is running (null = not running)
+
+  // Pay duration mode (settings.payTargetMode === 'duration') — live work
+  // accumulator. Mirrors the idle stopwatch: work accrues while the user is NOT on
+  // a break, and the "ödenen" work time shrinks the owed total.
+  payWorkAccumMs: number
+  payWorkStartTs: number | null
+  payWorkDay: string
 
   // Pay-mode breaks. `breakDay` is the date the usage/count belong to (drives the
   // daily auto-reset). `breakUsage` maps subtype -> minutes already used today.
@@ -172,12 +192,15 @@ interface ShiftStore {
   extendActiveShift: (templateId: string, minutes: number) => Promise<void>
   completeShift: (dateStr: string) => Promise<void>
   uncompleteShift: (dateStr: string) => Promise<void>
+  confirmActivity: (activityId: string) => void
   setTimeOffset: (offset: number) => void
   updateIdle: (isIdleNow: boolean) => void
   resetIdle: () => void
   startPayback: () => void
   stopPayback: () => void
   finishPayback: () => void
+  updatePayWork: (isWorkingNow: boolean) => void
+  resetToday: () => void
   startBreak: (type: BreakType, subtype: BreakSubtype, overBudget: boolean) => void
   stopBreak: () => void
   resetBreaks: () => void
@@ -197,14 +220,17 @@ const defaultSettings: Settings = {
   autoMinimizeToTray: true,
   defaultNotificationSound: 'default',
   birthday: '',
+  theme: 'mavi',
   commentProvider: 'offline',
   commentBaseUrl: 'http://127.0.0.1:11434',
   commentApiKey: '',
   commentModel: 'qwen2.5',
   mode: 'myshift',
+  payTargetMode: 'window',
   payShiftStart: '07:00',
   payShiftEnd: '16:00',
-  payShortBreakMin: 30,
+  payDurationMin: 420,
+  payShortBreakMin: 90,
   payMealBreakMin: 30,
   payWorkReminderMin: 50,
   payBreakReminderMin: 15
@@ -235,7 +261,10 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       idleDay: s.idleDay,
       idleLogMs: s.idleLogMs,
       paybackAccumMs: s.paybackAccumMs,
-      paybackStartTs: s.paybackStartTs
+      paybackStartTs: s.paybackStartTs,
+      payWorkAccumMs: s.payWorkAccumMs,
+      payWorkStartTs: s.payWorkStartTs,
+      payWorkDay: s.payWorkDay
     }
     const api = window.electronAPI
     if (api && api.store) {
@@ -268,7 +297,8 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       breakLog: s.breakLog,
       idleLog: s.idleLog,
       paybackLog: s.paybackLog,
-      todayHourly: s.todayHourly
+      todayHourly: s.todayHourly,
+      confirmedActivities: s.confirmedActivities
     }
     const api = window.electronAPI
     if (api && api.store) {
@@ -284,12 +314,16 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   completedShifts: [],
   isLoading: true,
   timeOffset: 0,
+  confirmedActivities: [],
   idleAccumMs: 0,
   idleStartTs: null,
   idleDay: '',
   idleLogMs: 0,
   paybackAccumMs: 0,
   paybackStartTs: null,
+  payWorkAccumMs: 0,
+  payWorkStartTs: null,
+  payWorkDay: '',
   runningBreak: null,
   breakDay: '',
   breakUsage: {},
@@ -339,6 +373,8 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           idleAccumMs?: number
           idleLogMs?: number
           paybackAccumMs?: number
+          payWorkAccumMs?: number
+          payWorkDay?: string
           idleDay?: string
         } | null
 
@@ -369,6 +405,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           idleLog?: TimeSpanLog[]
           paybackLog?: TimeSpanLog[]
           todayHourly?: Record<string, HourLog>
+          confirmedActivities?: string[]
         } | null
 
         set({ 
@@ -382,6 +419,9 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           idleLogMs: sameDay ? savedIdle.idleLogMs ?? 0 : 0,
           paybackAccumMs: sameDay ? savedIdle.paybackAccumMs ?? 0 : 0,
           paybackStartTs: null,
+          payWorkAccumMs: sameDay ? savedIdle.payWorkAccumMs ?? 0 : 0,
+          payWorkStartTs: null,
+          payWorkDay: todayStr,
           runningBreak: breakSameDay ? savedBreak.runningBreak ?? null : null,
           breakDay: todayStr,
           breakUsage: breakSameDay ? savedBreak.breakUsage ?? {} : {},
@@ -392,6 +432,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           idleLog: sameDay ? savedToday?.idleLog ?? [] : [],
           paybackLog: sameDay ? savedToday?.paybackLog ?? [] : [],
           todayHourly: breakSameDay ? savedToday?.todayHourly ?? {} : {},
+          confirmedActivities: sameDay ? savedToday?.confirmedActivities ?? [] : [],
           appUsage,
           isLoading: false 
         })
@@ -420,6 +461,9 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           idleLogMs: bSameDay ? idleParsed.idleLogMs ?? 0 : 0,
           paybackAccumMs: bSameDay ? idleParsed.paybackAccumMs ?? 0 : 0,
           paybackStartTs: null,
+          payWorkAccumMs: bSameDay ? idleParsed.payWorkAccumMs ?? 0 : 0,
+          payWorkStartTs: null,
+          payWorkDay: bToday,
           runningBreak: bBreakSameDay ? breakParsed.runningBreak ?? null : null,
           breakDay: bToday,
           breakUsage: bBreakSameDay ? breakParsed.breakUsage ?? {} : {},
@@ -430,6 +474,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           idleLog: bSameDay ? todayParsed?.idleLog ?? [] : [],
           paybackLog: bSameDay ? todayParsed?.paybackLog ?? [] : [],
           todayHourly: bBreakSameDay ? todayParsed?.todayHourly ?? {} : {},
+          confirmedActivities: bSameDay ? todayParsed?.confirmedActivities ?? [] : [],
           isLoading: false
         })
       }
@@ -675,7 +720,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   uncompleteShift: async (dateStr) => {
     const { completedShifts } = get()
     const newCompleted = completedShifts.filter(d => d !== dateStr)
-    set({ completedShifts: newCompleted })
+    set({ completedShifts: newCompleted, confirmedActivities: [] })
     get().updateDayLog(dateStr, { completed: false })
 
     const api = window.electronAPI
@@ -688,6 +733,13 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
 
   setTimeOffset: (offset) => {
     set({ timeOffset: offset })
+  },
+
+  confirmActivity: (activityId) => {
+    const { confirmedActivities } = get()
+    if (confirmedActivities.includes(activityId)) return
+    set({ confirmedActivities: [...confirmedActivities, activityId] })
+    persistToday()
   },
 
   updateIdle: (isIdleNow) => {
@@ -708,7 +760,8 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
         idleLog: [],
         paybackLog: [],
         breakLog: [],
-        todayHourly: {}
+        todayHourly: {},
+        confirmedActivities: []
       })
       persistIdle()
       persistToday()
@@ -735,6 +788,31 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   resetIdle: () => {
     set({ idleAccumMs: 0, idleStartTs: null })
     persistIdle()
+  },
+
+  // Duration mode: live "worked so far" stopwatch. Works whenever the user is NOT
+  // on a break (and not finished) — the remaining target shrinks as they work.
+  updatePayWork: (isWorkingNow) => {
+    const now = Date.now()
+    const d = new Date()
+    const day = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+    const { payWorkAccumMs, payWorkStartTs, payWorkDay } = get()
+
+    // New day — fresh accumulator (never count the gap since yesterday)
+    if (payWorkDay !== day) {
+      set({ payWorkAccumMs: 0, payWorkStartTs: isWorkingNow ? now : null, payWorkDay: day })
+      persistIdle()
+      return
+    }
+
+    if (isWorkingNow && payWorkStartTs === null) {
+      set({ payWorkStartTs: now })
+      persistIdle()
+    } else if (!isWorkingNow && payWorkStartTs !== null) {
+      const delta = Math.max(0, now - payWorkStartTs)
+      set({ payWorkAccumMs: payWorkAccumMs + delta, payWorkStartTs: null })
+      persistIdle()
+    }
   },
 
   startPayback: () => {
@@ -856,6 +934,43 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     set({ breakUsage: {}, breakCount: 0, breakLog: [] })
     persistBreak()
     persistToday()
+  },
+
+  // Full "today" reset — wipes today's live counters, logs and break budgets, and
+  // un-completes the day so a fresh shift can start. Past days are untouched.
+  resetToday: () => {
+    const d = new Date()
+    const day = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+    set({
+      idleAccumMs: 0,
+      idleStartTs: null,
+      idleDay: day,
+      idleLogMs: 0,
+      paybackAccumMs: 0,
+      paybackStartTs: null,
+      payWorkAccumMs: 0,
+      payWorkStartTs: null,
+      payWorkDay: day,
+      idleLog: [],
+      paybackLog: [],
+      breakLog: [],
+      todayHourly: {},
+      breakUsage: {},
+      breakCount: 0,
+      runningBreak: null,
+      breakDay: day,
+      lastBreakEndedAt: null,
+      confirmedActivities: [],
+      reminder: null
+    })
+    persistIdle()
+    persistBreak()
+    persistToday()
+
+    // Start today's DayLog fresh and un-complete the day (no past day is touched)
+    const freshLog: DayLog = { workedSeconds: 0, idleSeconds: 0, paybackSeconds: 0, breakSeconds: 0, breakCount: 0, completed: false }
+    set({ dailyLogs: { ...get().dailyLogs, [day]: freshLog } })
+    get().uncompleteShift(day)
   },
 
   showReminder: (kind, message) => {

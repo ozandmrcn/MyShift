@@ -97,7 +97,7 @@ export default function Timeline() {
                 ref={isCurrent ? activeItemRef : null}
                 className={`group flex items-center gap-2.5 px-2.5 py-2 rounded-lg border transition-all duration-200 ${
                   isCurrent
-                    ? 'bg-blue-500/10 border-blue-500/50 shadow-sm'
+                    ? 'accent-soft accent-border shadow-sm'
                     : isCompleted
                     ? 'bg-emerald-500/5 border-emerald-500/15 opacity-55'
                     : 'bg-white/2 border-white/5 opacity-35'
@@ -105,7 +105,7 @@ export default function Timeline() {
               >
                 {/* Status dot */}
                 <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                  isCurrent ? 'bg-blue-400 animate-pulse' : isCompleted ? 'bg-emerald-400' : 'bg-slate-600'
+                  isCurrent ? 'accent-solid animate-pulse' : isCompleted ? 'bg-emerald-400' : 'bg-slate-600'
                 }`} />
 
                 {/* Icon */}
@@ -126,7 +126,7 @@ export default function Timeline() {
                 {/* Duration */}
                 <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded flex-shrink-0 ${
                   isCurrent
-                    ? 'bg-blue-500/20 text-blue-300'
+                    ? 'accent-soft accent-text-soft'
                     : isCompleted
                     ? 'bg-emerald-500/15 text-emerald-400'
                     : 'bg-white/5 text-slate-500'
@@ -137,7 +137,7 @@ export default function Timeline() {
                 {/* Rewind to this activity */}
                 <button
                   onClick={() => handleRewind(act)}
-                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-blue-300 hover:bg-white/5 rounded-md px-1 py-0.5 text-[12px] leading-none"
+                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:accent-text-soft hover:bg-white/5 rounded-md px-1 py-0.5 text-[12px] leading-none"
                   title="Bu aktiviteye geri al — o saatteymiş gibi başlat"
                 >
                   ↺
@@ -244,7 +244,7 @@ export default function Timeline() {
         <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden mb-3">
           <div
             className={`h-full rounded-full transition-all duration-500 ${
-              isShiftFinished ? 'bg-emerald-500' : isOvertime ? 'bg-amber-500' : 'bg-blue-500'
+              isShiftFinished ? 'bg-emerald-500' : isOvertime ? 'bg-amber-500' : 'accent-solid'
             }`}
             style={{ width: `${(completedCount / sorted.length) * 100}%` }}
           />

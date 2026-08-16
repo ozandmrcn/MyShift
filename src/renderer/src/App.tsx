@@ -22,6 +22,12 @@ export default function App() {
     loadFromStore()
   }, [])
 
+  // Apply the selected theme (accent palette) to the root element.
+  const theme = useShiftStore((s) => s.settings.theme)
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme || 'mavi')
+  }, [theme])
+
   // Pay-mode break reminders run globally (any view, even minimized-to-tray).
   useBreakReminders()
 
@@ -56,7 +62,7 @@ export default function App() {
         <div className="relative w-12 h-12">
           {/* Windows 11 style progress ring/spinner */}
           <div className="absolute inset-0 rounded-full border-4 border-white/10" />
-          <div className="absolute inset-0 rounded-full border-4 border-blue-500 border-t-transparent animate-spin" />
+          <div className="absolute inset-0 rounded-full border-4 accent-border border-t-transparent animate-spin" />
         </div>
         <span className="text-xs uppercase tracking-widest text-slate-500 font-semibold mt-4">Veriler Yükleniyor...</span>
       </div>
@@ -65,7 +71,7 @@ export default function App() {
 
   return (
     <Router>
-      <div className="flex flex-col h-screen overflow-hidden bg-transparent text-slate-100">
+      <div className="app-bg flex flex-col h-screen overflow-hidden text-slate-100">
         {/* Native custom title bar */}
         <Titlebar />
 
@@ -85,10 +91,22 @@ export default function App() {
               {!recording && (
                 <>
                   <NavLink 
+                    to="/dashboard"
+                    className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
+                      isActive 
+                        ? 'bg-white/8 text-white border-l-2 accent-border' 
+                        : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="text-lg">📊</span>
+                    <span className="hidden md:inline">Dashboard</span>
+                  </NavLink>
+
+                  <NavLink 
                     to="/today"
                     className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
                       isActive 
-                        ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                        ? 'bg-white/8 text-white border-l-2 accent-border' 
                         : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
                     }`}
                   >
@@ -97,15 +115,15 @@ export default function App() {
                   </NavLink>
 
                   <NavLink 
-                    to="/dashboard"
+                    to="/history"
                     className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
                       isActive 
-                        ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                        ? 'bg-white/8 text-white border-l-2 accent-border' 
                         : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
                     }`}
                   >
-                    <span className="text-lg">📊</span>
-                    <span className="hidden md:inline">Dashboard</span>
+                    <span className="text-lg">🗓️</span>
+                    <span className="hidden md:inline">Geçmiş</span>
                   </NavLink>
                 </>
               )}
@@ -125,39 +143,27 @@ export default function App() {
               {!recording && (
                 <>
                   <NavLink 
-                    to="/editor"
-                    className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
-                      isActive 
-                        ? 'bg-white/8 text-white border-l-2 border-blue-500' 
-                        : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
-                    }`}
-                  >
-                    <span className="text-lg">⚙️</span>
-                    <span className="hidden md:inline">Vardiya Editörü</span>
-                  </NavLink>
-
-                  <NavLink 
-                    to="/history"
-                    className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
-                      isActive 
-                        ? 'bg-white/8 text-white border-l-2 border-blue-500' 
-                        : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
-                    }`}
-                  >
-                    <span className="text-lg">🗓️</span>
-                    <span className="hidden md:inline">Geçmiş</span>
-                  </NavLink>
-
-                  <NavLink 
                     to="/data"
                     className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
                       isActive 
-                        ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                        ? 'bg-white/8 text-white border-l-2 accent-border' 
                         : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
                     }`}
                   >
                     <span className="text-lg">🛰️</span>
                     <span className="hidden md:inline">Toplanan Veriler</span>
+                  </NavLink>
+
+                  <NavLink 
+                    to="/editor"
+                    className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
+                      isActive 
+                        ? 'bg-white/8 text-white border-l-2 accent-border' 
+                        : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className="text-lg">⚙️</span>
+                    <span className="hidden md:inline">Vardiya Editörü</span>
                   </NavLink>
                 </>
               )}
@@ -170,7 +176,7 @@ export default function App() {
                   to="/settings"
                   className={({ isActive }) => `flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium transition-all ${
                     isActive 
-                      ? 'bg-white/8 text-white border-l-2 border-blue-500' 
+                      ? 'bg-white/8 text-white border-l-2 accent-border' 
                       : 'text-slate-400 hover:bg-white/4 hover:text-slate-200'
                   }`}
                 >

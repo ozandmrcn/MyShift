@@ -30,7 +30,7 @@ export default function Titlebar() {
   } else if (currentActivity) {
     pill = {
       label: `${currentActivity.icon} ${currentActivity.name} · ${remainingTimeStr}`,
-      color: 'text-blue-300 bg-blue-500/10 border-blue-500/20'
+      color: 'accent-text-soft accent-soft accent-border-soft'
     }
   } else if (isBeforeShift && activeTemplate) {
     pill = { label: '💤 Vardiya Bekleniyor', color: 'text-slate-400 bg-white/5 border-white/10' }

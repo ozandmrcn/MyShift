@@ -172,8 +172,8 @@ export default function History() {
                             ? day.completed
                               ? 'bg-gradient-to-t from-emerald-600 to-emerald-500'
                               : day.isToday
-                              ? 'bg-gradient-to-t from-blue-600 to-blue-400'
-                              : 'bg-gradient-to-t from-blue-800/80 to-blue-600/60'
+                              ? 'accent-grad-t'
+                              : 'accent-grad-t-dull'
                             : 'bg-slate-800/30'
                         } ${idlePct > 0 ? 'rounded-b-sm' : 'rounded-sm'}`}
                         style={{ height: hasData ? `${Math.max(workedPct, 4)}%` : '4%' }}
@@ -183,7 +183,7 @@ export default function History() {
 
                   {/* Label */}
                   <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
-                    <span className={`text-[10px] font-medium ${day.isToday ? 'text-blue-400' : 'text-slate-500'}`}>
+                    <span className={`text-[10px] font-medium ${day.isToday ? 'accent-text' : 'text-slate-500'}`}>
                       {day.dayLabel}
                     </span>
                     <span className="text-[9px] text-slate-600 font-mono">
@@ -198,7 +198,7 @@ export default function History() {
           {/* Legend */}
           <div className="flex items-center gap-4 mt-4 justify-end">
             <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-sm bg-gradient-to-t from-blue-800/80 to-blue-600/60" />
+              <div className="w-3 h-3 rounded-sm accent-grad-t-dull" />
               <span className="text-[10px] text-slate-500">Çalışılan</span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -231,13 +231,13 @@ export default function History() {
               <div
                 key={e.date}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
-                  e.date === todayStr ? 'bg-blue-500/5 border-blue-500/20' : 'bg-white/2 border-white/5'
+                  e.date === todayStr ? 'accent-soft-faint accent-border-soft' : 'bg-white/2 border-white/5'
                 }`}
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-200 truncate">{formatDate(e.date)}</p>
                   {e.date === todayStr && (
-                    <p className="text-[10px] text-blue-400">Bugün</p>
+                    <p className="text-[10px] accent-text">Bugün</p>
                   )}
                 </div>
 
@@ -250,7 +250,7 @@ export default function History() {
                         min={0}
                         value={draft.worked}
                         onChange={(ev) => setDraft(d => ({ ...d, worked: Number(ev.target.value) }))}
-                        className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200 text-center focus:outline-none focus:border-blue-500"
+                        className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200 text-center focus:outline-none focus:accent-border"
                       />
                     </div>
                     <div>
@@ -260,7 +260,7 @@ export default function History() {
                         min={0}
                         value={draft.idle}
                         onChange={(ev) => setDraft(d => ({ ...d, idle: Number(ev.target.value) }))}
-                        className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200 text-center focus:outline-none focus:border-blue-500"
+                        className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200 text-center focus:outline-none focus:accent-border"
                       />
                     </div>
                     <div>
@@ -270,13 +270,13 @@ export default function History() {
                         min={0}
                         value={draft.payback}
                         onChange={(ev) => setDraft(d => ({ ...d, payback: Number(ev.target.value) }))}
-                        className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200 text-center focus:outline-none focus:border-blue-500"
+                        className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200 text-center focus:outline-none focus:accent-border"
                       />
                     </div>
                     <div className="flex flex-col gap-1 ml-1">
                       <button
                         onClick={() => saveEdit(e.date)}
-                        className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] px-2.5 py-1 rounded-lg font-semibold transition-colors"
+                        className="accent-solid-strong hover:accent-solid text-white text-[10px] px-2.5 py-1 rounded-lg font-semibold transition-colors"
                       >
                         ✓ Kaydet
                       </button>

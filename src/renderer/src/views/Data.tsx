@@ -131,7 +131,7 @@ export default function DataView() {
       <div className="max-w-2xl mx-auto flex flex-col gap-6 pb-2">
         {/* Page header */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-xl shadow-lg shadow-blue-500/10">
+          <div className="flex items-center justify-center w-11 h-11 rounded-2xl accent-soft border accent-border-soft text-xl shadow-lg accent-glow-lg">
             🛰️
           </div>
           <div>
@@ -164,7 +164,7 @@ export default function DataView() {
             <button
               onClick={exportData}
               disabled={busy === 'export'}
-              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-[11px] px-3 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap flex-shrink-0"
+              className="accent-solid-strong hover:accent-solid disabled:opacity-50 text-white text-[11px] px-3 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap flex-shrink-0"
             >
               {busy === 'export' ? 'Aktarılıyor…' : '⬇ Dışa Aktar'}
             </button>
@@ -210,7 +210,7 @@ export default function DataView() {
               <button
                 onClick={analyze}
                 disabled={analyzing}
-                className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-[11px] px-3 py-1.5 rounded-lg font-semibold transition-colors"
+                className="accent-solid-strong hover:accent-solid disabled:opacity-50 text-white text-[11px] px-3 py-1.5 rounded-lg font-semibold transition-colors"
               >
                 {analyzing ? 'Analiz Ediliyor…' : '🔎 Son 7 Günü Analiz Et'}
               </button>
@@ -257,7 +257,7 @@ export default function DataView() {
               onKeyDown={(e) => { if (e.key === 'Enter') addNote() }}
               placeholder="Manuel gözlem ekle (örn: gece geç saatlerde odaklanıyor)…"
               maxLength={160}
-              className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+              className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:accent-border placeholder:text-slate-600"
             />
             <button
               onClick={addNote}

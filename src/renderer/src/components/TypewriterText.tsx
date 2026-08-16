@@ -103,7 +103,7 @@ function TypedComment({
 
 // Renders a comment under the clock. When a new comment arrives the current one
 // bursts into particles (BurstParticles), then the new text types itself in.
-export default function TypewriterText({ text, baseColor, highlight, highlightColor = 'text-violet-300' }: TypewriterTextProps) {
+export default function TypewriterText({ text, baseColor, highlight, highlightColor = 'text-rose-300' }: TypewriterTextProps) {
   const [burstText, setBurstText] = useState('')
   const prevRef = useRef(text)
   const timerRef = useRef<number | null>(null)

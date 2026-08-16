@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useShiftStore } from '../stores/useShiftStore'
 import type { BreakSubtype } from '../stores/useShiftStore'
 import { useLiveShiftEngine, computeWorkedSeconds, timeToSeconds, formatRemaining } from '../hooks/useLiveShiftEngine'
@@ -57,6 +57,8 @@ export default function TodaySummary() {
   const paybackLog = useShiftStore((s) => s.paybackLog)
   const todayHourly = useShiftStore((s) => s.todayHourly)
   const breakUsage = useShiftStore((s) => s.breakUsage)
+  const resetToday = useShiftStore((s) => s.resetToday)
+  const [confirmReset, setConfirmReset] = useState(false)
 
   const nowSecs = timeToSeconds(engine.currentTimeSecs)
   const nowMs = Date.now()
@@ -65,6 +67,8 @@ export default function TodaySummary() {
   // Shift window
   const shift = useMemo(() => {
     if (settings.mode === 'pay') {
+      // Duration mode has no fixed window — work is measured by the accumulator
+      if (settings.payTargetMode === 'duration') return null
       const s = timeToSeconds(`${settings.payShiftStart}:00`)
       const e = timeToSeconds(`${settings.payShiftEnd}:00`)
       if (e <= s) return null
@@ -78,7 +82,12 @@ export default function TodaySummary() {
       end: timeToSeconds(`${sorted[sorted.length - 1].endTime}:00`),
       activities: sorted
     }
-  }, [settings.mode, settings.payShiftStart, settings.payShiftEnd, activeTemplate])
+  }, [settings.mode, settings.payTargetMode, settings.payShiftStart, settings.payShiftEnd, activeTemplate])
+
+  const durationMode = settings.mode === 'pay' && settings.payTargetMode === 'duration'
+  const durationTargetSecs = Math.max(0, settings.payDurationMin) * 60
+  const durationRemaining = Math.max(0, durationTargetSecs - engine.workedSeconds)
+  const durationPct = durationTargetSecs > 0 ? Math.min(100, (engine.workedSeconds / durationTargetSecs) * 100) : 0
 
   // Break seconds that fall inside [hourStartMs, hourEndMs] (pay mode: breakLog +
   // running in-budget break; over-budget breaks are aşım, never break time).
@@ -198,12 +207,33 @@ export default function TodaySummary() {
             {settings.mode === 'pay' ? ' · PAY MODU' : activeTemplate ? ` · ${activeTemplate.name}` : ' · Vardiya yok'}
           </p>
         </div>
-        {engine.isShiftFinished && (
-          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">✓ Bugün tamamlandı</span>
-        )}
-        {engine.isOvertime && (
-          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300">⏰ Aşımda</span>
-        )}
+        <div className="flex items-center gap-2">
+          {engine.isShiftFinished && (
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">✓ Bugün tamamlandı</span>
+          )}
+          {engine.isOvertime && (
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300">⏰ Aşımda</span>
+          )}
+          <button
+            onClick={() => {
+              if (confirmReset) {
+                resetToday()
+                setConfirmReset(false)
+              } else {
+                setConfirmReset(true)
+                window.setTimeout(() => setConfirmReset(false), 2500)
+              }
+            }}
+            className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors whitespace-nowrap ${
+              confirmReset
+                ? 'bg-rose-600 border-rose-500 text-white hover:bg-rose-500'
+                : 'bg-slate-800/80 border-white/10 text-slate-400 hover:text-slate-200 hover:bg-slate-700/80'
+            }`}
+            title="Bugünün tüm sayaçlarını, mola bütçesini ve kayıtları sıfırlar"
+          >
+            {confirmReset ? 'Emin misin?' : '↺ Bugünü Sıfırla'}
+          </button>
+        </div>
       </div>
 
       {/* Overview stat cards */}
@@ -245,9 +275,40 @@ export default function TodaySummary() {
         />
       </div>
 
-      {/* Hour-by-hour log */}
-      <SectionCard icon="🕐" title="Saat Saat Bugün">
-        {!shift ? (
+      {/* Hour-by-hour log — replaced by the live work counter in duration mode */}
+      <SectionCard icon="🕐" title={durationMode ? 'Ödenecek Süre' : 'Saat Saat Bugün'}>
+        {durationMode ? (
+          <div>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs text-slate-400">
+                  Çalıştıkça kalan azalır — molalar sayılmaz.
+                </p>
+                <p className="text-3xl font-bold font-mono text-slate-100 mt-2">
+                  {formatRemaining(durationRemaining)}
+                  <span className="text-sm text-slate-500 ml-2 font-sans font-medium">kaldı</span>
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Çalışılan</p>
+                <p className="text-lg font-bold font-mono accent-text-soft">{formatRemaining(engine.workedSeconds)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Hedef</p>
+                <p className="text-lg font-bold font-mono text-slate-200">{formatRemaining(durationTargetSecs)}</p>
+              </div>
+            </div>
+            <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden mt-5">
+              <div
+                className={`h-full transition-all duration-1000 ${durationRemaining <= 0 ? 'bg-emerald-500' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'}`}
+                style={{ width: `${durationPct}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-slate-500 mt-2">
+              Hedefe {durationPct >= 100 ? 'ulaştın 🎉' : `${Math.round(durationPct)}% tamamlandı`}
+            </p>
+          </div>
+        ) : !shift ? (
           <p className="text-xs text-slate-500">Bugün için aktif bir vardiya tanımlı değil.</p>
         ) : hours.length === 0 ? (
           <p className="text-xs text-slate-500">Vardiya henüz başlamadı.</p>
@@ -272,7 +333,7 @@ export default function TodaySummary() {
                   >
                     <td className="py-2 pr-3 text-sm font-mono font-semibold text-slate-300">
                       {r.key}
-                      {r.current && <span className="ml-1.5 text-[9px] text-blue-300 font-sans uppercase tracking-wide">şimdi</span>}
+                      {r.current && <span className="ml-1.5 text-[9px] accent-text-soft font-sans uppercase tracking-wide">şimdi</span>}
                     </td>
                     <td className="py-2 pr-3 text-sm font-mono text-slate-200">{formatRemaining(r.worked)}</td>
                     <td className="py-2 pr-3 text-sm font-mono text-orange-300">{formatRemaining(r.breakSec)}</td>
@@ -280,7 +341,7 @@ export default function TodaySummary() {
                     <td className="py-2 pr-3 text-sm font-mono text-emerald-300">{formatRemaining(r.payback)}</td>
                     <td className="py-2">
                       <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden flex">
-                        <div className="h-full bg-blue-500/70" style={{ width: `${Math.min(100, (r.worked / maxHourWorked) * 100)}%` }} />
+                        <div className="h-full accent-heat-3" style={{ width: `${Math.min(100, (r.worked / maxHourWorked) * 100)}%` }} />
                         <div className="h-full bg-orange-400/70" style={{ width: `${Math.min(100, (r.breakSec / maxHourWorked) * 100)}%` }} />
                       </div>
                     </td>

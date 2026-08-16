@@ -120,7 +120,7 @@ export function getMoodColor(state: MotivationState): string {
 }
 
 const AMBIENT_COLORS = ['text-slate-400', 'text-stone-400', 'text-amber-300', 'text-orange-300', 'text-emerald-300', 'text-rose-300', 'text-violet-300']
-const HIGHLIGHT_COLOR = 'text-violet-300'
+const HIGHLIGHT_COLOR = 'text-rose-300'
 
 // ─── Combinatorial line pools ────────────────────────────────────────────────
 

@@ -8,6 +8,42 @@ const MONTH_NAMES = [
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
 ]
 
+// General themes — keys must match the [data-theme=...] palettes in index.css.
+// Each swatch is a circular conic-gradient showing the theme's tones:
+// base surface -> deep accent -> mid accent -> light accent.
+const THEMES = [
+  {
+    key: 'mavi',
+    label: 'Gece Mavisi',
+    swatch: 'conic-gradient(#0f172a 0 25%, #1e40af 0 50%, #3b82f6 0 75%, #93c5fd 0 100%)'
+  },
+  {
+    key: 'zurut',
+    label: 'Zümrüt',
+    swatch: 'conic-gradient(#0a1f16 0 25%, #065f46 0 50%, #10b981 0 75%, #6ee7b7 0 100%)'
+  },
+  {
+    key: 'turkuaz',
+    label: 'Turkuaz',
+    swatch: 'conic-gradient(#072624 0 25%, #0f766e 0 50%, #14b8a6 0 75%, #5eead4 0 100%)'
+  },
+  {
+    key: 'menekse',
+    label: 'Menekşe',
+    swatch: 'conic-gradient(#170d2e 0 25%, #6d28d9 0 50%, #8b5cf6 0 75%, #c4b5fd 0 100%)'
+  },
+  {
+    key: 'kiraz',
+    label: 'Kiraz',
+    swatch: 'conic-gradient(#240d12 0 25%, #be123c 0 50%, #f43f5e 0 75%, #fda4af 0 100%)'
+  },
+  {
+    key: 'kehribar',
+    label: 'Kehribar',
+    swatch: 'conic-gradient(#241d09 0 25%, #b45309 0 50%, #f59e0b 0 75%, #fcd34d 0 100%)'
+  }
+]
+
 // Show only a hint of the saved API key (sk-…abcd) so the user can see whether
 // one is stored without ever printing the secret.
 function maskKey(key: string): string {
@@ -27,7 +63,7 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
         onChange={(e) => onChange(e.target.checked)}
         className="sr-only peer"
       />
-      <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
+      <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all toggle-checked" />
     </label>
   )
 }
@@ -193,7 +229,7 @@ export default function SettingsView() {
       <div className="max-w-2xl mx-auto flex flex-col gap-6 pb-2">
         {/* Page header */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-xl shadow-lg shadow-blue-500/10">
+          <div className="flex items-center justify-center w-11 h-11 rounded-2xl accent-soft border accent-border-soft text-xl shadow-lg accent-glow-lg">
             ⚙️
           </div>
           <div>
@@ -201,6 +237,39 @@ export default function SettingsView() {
             <p className="text-xs text-slate-400 mt-0.5">Açılış, tepsi ve bildirim tercihlerinizi yönetin.</p>
           </div>
         </div>
+
+        {/* Görünüm */}
+        <Section
+          icon="🎨"
+          title="Görünüm"
+          description="Genel temayı seçin — uygulamanın tamamı (arka plan, kartlar, yazılar) bu renge bürünür."
+        >
+          <Row
+            icon="🌈"
+            title="Tema"
+            description="Uygulamanın ana teması — arka plan, kartlar, butonlar ve tüm metin renkleri uyum sağlar."
+            right={
+              <div className="flex items-center gap-2.5 flex-wrap flex-shrink-0 justify-end">
+                {THEMES.map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    title={t.label}
+                    onClick={() => updateSettings({ theme: t.key })}
+                    className={`w-9 h-9 rounded-full transition-all accent-ring ${
+                      settings.theme === t.key
+                        ? 'scale-110 opacity-100 ring-2 ring-offset-2 ring-offset-slate-950'
+                        : 'opacity-70 hover:opacity-100 hover:scale-105'
+                    }`}
+                    style={{ background: t.swatch }}
+                  >
+                    <span className="sr-only">{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            }
+          />
+        </Section>
 
         {/* Çalışma Modu */}
         <Section
@@ -218,7 +287,7 @@ export default function SettingsView() {
                   type="button"
                   onClick={() => updateSettings({ mode: 'myshift' })}
                   className={`px-3 py-1.5 text-[11px] font-semibold transition-colors ${
-                    settings.mode === 'myshift' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                    settings.mode === 'myshift' ? 'accent-solid-strong text-white' : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   MyShift
@@ -239,27 +308,73 @@ export default function SettingsView() {
           {settings.mode === 'pay' && (
             <>
               <Row
-                icon="🌅"
-                title="Pay Vardiyası"
-                description="Sabit mesai başlangıç ve bitiş saati."
+                icon="🕐"
+                title="Vardiya Tipi"
+                description="Saat Aralığı: sabit başlangıç/bitiş saati. Toplam Süre: bugün 'ödeyeceğin' toplam çalışma dakikası — çalıştıkça kalan azalır."
                 right={
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <input
-                      type="time"
-                      value={settings.payShiftStart}
-                      onChange={(e) => updateSettings({ payShiftStart: e.target.value })}
-                      className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
-                    />
-                    <span className="text-slate-500 text-xs">→</span>
-                    <input
-                      type="time"
-                      value={settings.payShiftEnd}
-                      onChange={(e) => updateSettings({ payShiftEnd: e.target.value })}
-                      className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
-                    />
+                  <div className="flex rounded-lg overflow-hidden border border-white/10 bg-slate-950 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => updateSettings({ payTargetMode: 'window' })}
+                      className={`px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                        settings.payTargetMode === 'window' ? 'accent-solid-strong text-white' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Saat Aralığı
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateSettings({ payTargetMode: 'duration' })}
+                      className={`px-3 py-1.5 text-[11px] font-semibold transition-colors border-l border-white/5 ${
+                        settings.payTargetMode === 'duration' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Toplam Süre
+                    </button>
                   </div>
                 }
               />
+
+              {settings.payTargetMode === 'window' ? (
+                <Row
+                  icon="🌅"
+                  title="Pay Vardiyası"
+                  description="Sabit mesai başlangıç ve bitiş saati."
+                  right={
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <input
+                        type="time"
+                        value={settings.payShiftStart}
+                        onChange={(e) => updateSettings({ payShiftStart: e.target.value })}
+                        className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                      />
+                      <span className="text-slate-500 text-xs">→</span>
+                      <input
+                        type="time"
+                        value={settings.payShiftEnd}
+                        onChange={(e) => updateSettings({ payShiftEnd: e.target.value })}
+                        className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  }
+                />
+              ) : (
+                <Row
+                  icon="⏱️"
+                  title="Ödenecek Süre"
+                  description="Bugün tamamlaman gereken toplam çalışma süresi. Çalıştıkça kalan azalır; molalar sayılmaz."
+                  right={
+                    <input
+                      type="number"
+                      min={1}
+                      max={1440}
+                      value={settings.payDurationMin}
+                      onChange={(e) => updateSettings({ payDurationMin: Math.max(1, Math.min(1440, parseInt(e.target.value, 10) || 1)) })}
+                      className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 text-right"
+                    />
+                  }
+                />
+              )}
               <Row
                 icon="☕"
                 title="Kısa Mola Bütçesi"
@@ -408,7 +523,7 @@ export default function SettingsView() {
                 <select
                   value={settings.defaultNotificationSound}
                   onChange={(e) => updateSettings({ defaultNotificationSound: e.target.value })}
-                  className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border cursor-pointer"
                 >
                   <option value="default">Varsayılan</option>
                   <option value="bell">Çan</option>
@@ -440,7 +555,7 @@ export default function SettingsView() {
               <select
                 value={settings.commentProvider}
                 onChange={(e) => handleProviderChange(e.target.value as Settings['commentProvider'])}
-                className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+                className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border cursor-pointer"
               >
                 <option value="offline">Yerleşik Motor</option>
                 <option value="ollama">Ollama (Yerel)</option>
@@ -463,7 +578,7 @@ export default function SettingsView() {
                         value={settings.commentBaseUrl}
                         onChange={(e) => updateSettings({ commentBaseUrl: e.target.value })}
                         placeholder="http://127.0.0.1:11434"
-                        className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 w-52"
+                        className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border w-52"
                       />
                     }
                   />
@@ -476,7 +591,7 @@ export default function SettingsView() {
                         type="text"
                         value={settings.commentModel}
                         onChange={(e) => updateSettings({ commentModel: e.target.value })}
-                        className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 w-40"
+                        className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border w-40"
                       />
                     }
                   />
@@ -501,11 +616,11 @@ export default function SettingsView() {
                         value={keyDraft}
                         onChange={(e) => setKeyDraft(e.target.value)}
                         placeholder={settings.commentProvider === 'openrouter' ? 'sk-or-v1-...' : 'sk-...'}
-                        className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 placeholder:text-slate-600"
+                        className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:accent-border placeholder:text-slate-600"
                       />
                       <button
                         onClick={handleSaveApiKey}
-                        className="bg-blue-600 hover:bg-blue-500 text-white text-[11px] px-3 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap"
+                        className="accent-solid-strong hover:accent-solid text-white text-[11px] px-3 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap"
                       >
                         {keySavedFlash ? '✓ Kaydedildi' : '💾 Kaydet'}
                       </button>
@@ -539,7 +654,7 @@ export default function SettingsView() {
                                 value={settings.commentBaseUrl}
                                 onChange={(e) => updateSettings({ commentBaseUrl: e.target.value })}
                                 placeholder="https://api.openai.com/v1"
-                                className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 w-52"
+                                className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border w-52"
                               />
                             }
                           />
@@ -552,7 +667,7 @@ export default function SettingsView() {
                                 type="text"
                                 value={settings.commentModel}
                                 onChange={(e) => updateSettings({ commentModel: e.target.value })}
-                                className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 w-40"
+                                className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border w-40"
                               />
                             }
                           />
@@ -581,7 +696,7 @@ export default function SettingsView() {
                           <select
                             value={settings.commentModel}
                             onChange={(e) => updateSettings({ commentModel: e.target.value })}
-                            className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+                            className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:accent-border cursor-pointer"
                           >
                             {openRouterModels.map(m => (
                               <option key={m.id} value={m.id}>
@@ -678,7 +793,7 @@ export default function SettingsView() {
                 <select
                   value={bDay}
                   onChange={(e) => handleBirthdayChange(Number(e.target.value), bMonth)}
-                  className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border cursor-pointer"
                 >
                   {Array.from({ length: 31 }).map((_, i) => (
                     <option key={i + 1} value={i + 1}>{i + 1}</option>
@@ -687,7 +802,7 @@ export default function SettingsView() {
                 <select
                   value={bMonth}
                   onChange={(e) => handleBirthdayChange(bDay, Number(e.target.value))}
-                  className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  className="bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border cursor-pointer"
                 >
                   {MONTH_NAMES.map((name, i) => (
                     <option key={i + 1} value={i + 1}>{name}</option>

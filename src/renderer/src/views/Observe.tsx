@@ -113,7 +113,7 @@ export default function ObserveView() {
           ) : (
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-blue-500/10 border border-blue-500/20 text-lg flex-shrink-0">
+                <div className="flex items-center justify-center w-11 h-11 rounded-xl accent-soft border accent-border-soft text-lg flex-shrink-0">
                   🖥️
                 </div>
                 <div className="min-w-0 flex-1">

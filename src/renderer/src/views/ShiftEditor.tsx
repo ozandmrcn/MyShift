@@ -4,9 +4,9 @@ import { playSound } from '../utils/soundEffects'
 
 // ─── Quick Presets ─────────────────────────────────────────────────────────────
 const ACTIVITY_PRESETS: Partial<Activity>[] = [
-  { name: 'Çay Kahve Molası', icon: '☕', color: 'orange', duration: 15 },
-  { name: 'Kahvaltı', icon: '🍳', color: 'orange', duration: 30 },
-  { name: 'Yemek Molası', icon: '🍔', color: 'amber', duration: 30 },
+  { name: 'Çay Kahve Molası', icon: '☕', color: 'orange', duration: 15, isBreak: true },
+  { name: 'Kahvaltı', icon: '🍳', color: 'orange', duration: 30, isBreak: true },
+  { name: 'Yemek Molası', icon: '🍔', color: 'amber', duration: 30, isBreak: true },
   { name: 'Çalışma Seansı', icon: '💻', color: 'blue', duration: 90 },
   { name: 'Toplantı', icon: '💬', color: 'purple', duration: 60 },
   { name: 'Spor / Egzersiz', icon: '🏃', color: 'red', duration: 45 },
@@ -17,7 +17,7 @@ const ACTIVITY_PRESETS: Partial<Activity>[] = [
 // ─── Constants ────────────────────────────────────────────────────────────────
 const EMOJI_OPTIONS = ['💻', '☕', '🍔', '📚', '🏃', '😴', '🚗', '🎮', '🎨', '🎵', '🏢', '💬', '🧹', '🛒', '🏋️', '🧘', '🛌', '🍕', '✏️', '📝', '🎯', '🍳', '🌿', '🏖️']
 const COLOR_OPTIONS = [
-  { key: 'blue',    label: 'Mavi',   bg: 'bg-blue-500',   ring: 'ring-blue-400',   card: 'bg-blue-500/10 border-blue-500/30 text-blue-300' },
+  { key: 'blue',    label: 'Mavi',   bg: 'accent-solid',   ring: 'accent-ring',   card: 'accent-soft accent-border-soft accent-text-soft' },
   { key: 'orange',  label: 'Turuncu',bg: 'bg-orange-500', ring: 'ring-orange-400', card: 'bg-orange-500/10 border-orange-500/30 text-orange-300' },
   { key: 'emerald', label: 'Yeşil',  bg: 'bg-emerald-500',ring: 'ring-emerald-400',card: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' },
   { key: 'purple',  label: 'Mor',    bg: 'bg-purple-500', ring: 'ring-purple-400', card: 'bg-purple-500/10 border-purple-500/30 text-purple-300' },
@@ -115,7 +115,7 @@ function ActivityCard({
         >⧉</button>
         <button
           onClick={onEdit}
-          className="flex-1 px-2.5 text-slate-400 hover:text-blue-300 hover:bg-blue-500/10 transition-colors text-[11px]"
+          className="flex-1 px-2.5 text-slate-400 hover:accent-text-soft accent-soft-hover transition-colors text-[11px]"
           title="Düzenle"
         >✎</button>
       </div>
@@ -157,6 +157,7 @@ function ActivityModal({
       name: preset.name ?? form.name,
       icon: preset.icon ?? form.icon,
       color: preset.color ?? form.color,
+      isBreak: preset.isBreak ?? form.isBreak,
       endTime,
       duration: preset.duration ?? form.duration
     })
@@ -222,7 +223,7 @@ function ActivityModal({
               required
               value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
-              className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:accent-border transition-colors"
               placeholder="Örn: Kahvaltı, Çalışma Seansı..."
             />
           </div>
@@ -238,7 +239,7 @@ function ActivityModal({
                 required
                 value={form.startTime}
                 onChange={e => setForm({ ...form, startTime: e.target.value })}
-                className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:accent-border transition-colors"
               />
             </div>
             <div>
@@ -250,7 +251,7 @@ function ActivityModal({
                 required
                 value={form.endTime}
                 onChange={e => setForm({ ...form, endTime: e.target.value })}
-                className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:accent-border transition-colors"
               />
             </div>
           </div>
@@ -281,7 +282,7 @@ function ActivityModal({
                   onClick={() => setForm({ ...form, icon: emo })}
                   className={`aspect-square text-xl rounded-lg flex items-center justify-center transition-all hover:scale-110 ${
                     form.icon === emo
-                      ? 'bg-blue-600 shadow-md shadow-blue-500/30 scale-110'
+                      ? 'accent-solid-strong shadow-md accent-glow scale-110'
                       : 'hover:bg-white/10'
                   }`}
                 >
@@ -344,7 +345,7 @@ function ActivityModal({
                   onChange={e => setForm({ ...form, notificationEnabled: e.target.checked })}
                   className="sr-only peer"
                 />
-                <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
+                <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all toggle-checked" />
               </label>
             </div>
 
@@ -371,7 +372,7 @@ function ActivityModal({
                       onClick={() => setForm({ ...form, notificationSound: s.key })}
                       className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-colors border ${
                         form.notificationSound === s.key
-                          ? 'bg-blue-600 border-blue-500 text-white'
+                          ? 'accent-solid-strong accent-border text-white'
                           : 'bg-slate-900 border-white/5 text-slate-400 hover:bg-slate-800'
                       }`}
                     >
@@ -393,7 +394,7 @@ function ActivityModal({
               onChange={e => setForm({ ...form, notes: e.target.value })}
               placeholder="Aktivite hakkında not ekleyin..."
               rows={2}
-              className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+              className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:accent-border transition-colors resize-none"
             />
           </div>
 
@@ -408,7 +409,7 @@ function ActivityModal({
             </button>
             <button
               type="submit"
-              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-blue-500/20"
+              className="flex-1 py-2.5 accent-solid-strong hover:accent-solid text-white rounded-xl text-sm font-semibold transition-colors shadow-lg accent-glow-lg"
             >
               {isNew ? 'Aktivite Ekle' : 'Kaydet'}
             </button>
@@ -620,7 +621,7 @@ export default function ShiftEditor() {
             <h3 className="font-semibold text-slate-200 text-sm">Şablonlarım</h3>
             <button
               onClick={handleCreate}
-              className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1.5 rounded-lg transition-colors font-medium"
+              className="text-xs accent-solid-strong hover:accent-solid text-white px-2.5 py-1.5 rounded-lg transition-colors font-medium"
             >
               + Yeni
             </button>
@@ -633,7 +634,7 @@ export default function ShiftEditor() {
                 onClick={() => setSelectedId(t.id)}
                 className={`w-full text-left p-2.5 rounded-lg border transition-all duration-150 ${
                   selectedId === t.id
-                    ? 'bg-blue-500/10 border-blue-500/60 text-white'
+                    ? 'accent-soft accent-border text-white'
                     : 'bg-white/2 border-white/5 text-slate-400 hover:bg-white/5 hover:text-slate-200'
                 }`}
               >
@@ -671,7 +672,7 @@ export default function ShiftEditor() {
                 type="text"
                 value={selected.name}
                 onChange={e => saveTemplate({ ...selected, name: e.target.value })}
-                className="w-full bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm text-slate-200 focus:outline-none focus:accent-border"
               />
             </div>
 
@@ -688,7 +689,7 @@ export default function ShiftEditor() {
                   onChange={e => saveTemplate({ ...selected, isActive: e.target.checked })}
                   className="sr-only peer"
                 />
-                <div className="w-9 h-5 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600" />
+                <div className="w-9 h-5 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all toggle-checked" />
               </label>
             </div>
 
@@ -703,7 +704,7 @@ export default function ShiftEditor() {
                     title={WEEKDAY_FULL[day]}
                     className={`flex-1 min-w-[32px] py-1 rounded-lg text-[10px] font-semibold border transition-all ${
                       selected.weekdays.includes(day)
-                        ? 'bg-blue-600 border-blue-500 text-white'
+                        ? 'accent-solid-strong accent-border text-white'
                         : 'bg-slate-900 border-white/5 text-slate-500 hover:bg-slate-800'
                     }`}
                   >
@@ -731,7 +732,7 @@ export default function ShiftEditor() {
                 />
                 <button
                   onClick={handleAddCustomDate}
-                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-2.5 rounded-lg font-medium flex-shrink-0"
+                  className="accent-solid-strong hover:accent-solid text-white text-xs px-2.5 rounded-lg font-medium flex-shrink-0"
                 >
                   +
                 </button>
@@ -804,7 +805,7 @@ export default function ShiftEditor() {
           <button
             disabled={!selected}
             onClick={handleAddActivity}
-            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-blue-500/20"
+            className="accent-solid-strong hover:accent-solid disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md accent-glow-lg"
           >
             + Aktivite Ekle
           </button>
@@ -823,7 +824,7 @@ export default function ShiftEditor() {
               <p className="text-sm">Bu şablonda henüz aktivite yok.</p>
               <button
                 onClick={handleAddActivity}
-                className="mt-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-5 py-2.5 rounded-xl font-semibold transition-colors"
+                className="mt-2 accent-solid-strong hover:accent-solid text-white text-sm px-5 py-2.5 rounded-xl font-semibold transition-colors"
               >
                 + İlk Aktiviteyi Ekle
               </button>

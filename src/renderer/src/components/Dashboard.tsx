@@ -9,11 +9,11 @@ import Timeline from './Timeline'
 export function getColors(color: string) {
   const map: Record<string, { bg: string; text: string; border: string; glow: string; raw: string }> = {
     blue: {
-      bg: 'bg-blue-500/10 hover:bg-blue-500/15',
-      text: 'text-blue-400',
-      border: 'border-blue-500/30',
-      glow: 'shadow-blue-500/10',
-      raw: 'bg-blue-500'
+      bg: 'accent-soft accent-soft-hover',
+      text: 'accent-text',
+      border: 'accent-border-soft',
+      glow: 'accent-glow-lg',
+      raw: 'accent-solid'
     },
     orange: {
       bg: 'bg-orange-500/10 hover:bg-orange-500/15',
@@ -107,10 +107,17 @@ const SUBTYPE_LABELS: Record<BreakSubtype, { label: string; icon: string }> = {
   aksam: { label: 'Akşam Yemeği', icon: '🍛' }
 }
 
+// HH:MM from a timestamp — for "Son Mola saat kaçta" on the break card
+function msToClock(ts: number): string {
+  const d = new Date(ts)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 function BreakCard() {
   const settings = useShiftStore((s) => s.settings)
   const runningBreak = useShiftStore((s) => s.runningBreak)
   const breakUsage = useShiftStore((s) => s.breakUsage)
+  const breakLog = useShiftStore((s) => s.breakLog)
   const startBreak = useShiftStore((s) => s.startBreak)
   const stopBreak = useShiftStore((s) => s.stopBreak)
   const resetBreaks = useShiftStore((s) => s.resetBreaks)
@@ -190,6 +197,20 @@ function BreakCard() {
         </div>
       )}
 
+      {breakLog.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 bg-white/3 border border-white/5 rounded-lg px-3 py-2">
+          <span className="text-slate-400 font-medium">Son Mola:</span>
+          <span>{SUBTYPE_LABELS[breakLog[breakLog.length - 1].subtype].icon} {SUBTYPE_LABELS[breakLog[breakLog.length - 1].subtype].label}</span>
+          <span className="text-slate-600">·</span>
+          <span className="font-mono">{msToClock(breakLog[breakLog.length - 1].startedAt)}</span>
+          <span className="text-slate-600">·</span>
+          <span className="font-mono font-semibold text-slate-300">{formatRemaining(breakLog[breakLog.length - 1].durationSec)}</span>
+          {breakLog[breakLog.length - 1].overBudget && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">AŞIM</span>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-col gap-3">
         {BREAK_GROUPS.map((g) => {
           const budget = g.type === 'short' ? settings.payShortBreakMin : settings.payMealBreakMin
@@ -264,10 +285,16 @@ export default function Dashboard() {
     breakRunning,
     resetIdle,
     effectiveTime,
-    timeOffset
+    timeOffset,
+    durationMode,
+    durationTargetSecs,
+    payWorkSecs,
+    pendingActivity,
+    pendingAfter,
+    awaitingConfirmation
   } = useLiveShiftEngine()
 
-  const { completeShift, extendActiveShift, uncompleteShift, setTimeOffset, stopPayback, finishPayback, dailyLogs } = useShiftStore()
+  const { completeShift, extendActiveShift, uncompleteShift, setTimeOffset, stopPayback, finishPayback, confirmActivity, dailyLogs } = useShiftStore()
   const mode = useShiftStore((s) => s.settings.mode)
   const runningBreak = useShiftStore((s) => s.runningBreak)
   const stopBreak = useShiftStore((s) => s.stopBreak)
@@ -306,7 +333,7 @@ export default function Dashboard() {
   else if (paybackRunning) status = { text: 'Payback', cls: 'text-amber-400' }
   else if (breakRunning && !overBudgetBreak) status = { text: 'Molada', cls: 'text-emerald-400' }
   else if (isIdle) status = { text: 'Aşımda', cls: 'text-amber-400' }
-  else if (currentActivity) status = { text: 'Devam Ediyor', cls: 'text-blue-400' }
+  else if (currentActivity) status = { text: 'Devam Ediyor', cls: 'accent-text' }
   else status = { text: '—', cls: 'text-slate-400' }
 
   const stats = [
@@ -340,6 +367,9 @@ export default function Dashboard() {
     if (isCurrentLast) { completeShift(currentDateStr); return }
     const targetSecs = timeToSeconds(currentActivity.endTime)
     setTimeOffset(targetSecs - timeToSeconds(currentTimeSecs))
+  }
+  const handleConfirmPending = () => {
+    if (pendingActivity) confirmActivity(pendingActivity.id)
   }
 
   // ── Motivation engine (context-aware "AI" one-liner) ────────────────────────
@@ -451,20 +481,24 @@ export default function Dashboard() {
             )}
           </div>
           <div className="text-left md:text-right">
-            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">AKTİF VARDİYA</span>
-            <span className={`ml-2 text-[9px] font-bold px-2 py-0.5 rounded-full border align-middle ${
-              mode === 'pay'
-                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                : 'bg-blue-500/15 border-blue-500/30 text-blue-300'
-            }`}>
-              {mode === 'pay' ? 'PAY MODU' : 'MYSHIFT MODU'}
-            </span>
+            <div className="flex flex-wrap items-center gap-2 md:justify-end">
+              <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">AKTİF VARDİYA</span>
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                mode === 'pay'
+                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                  : 'accent-soft accent-border-soft accent-text-soft'
+              }`}>
+                {mode === 'pay' ? 'PAY MODU' : 'MYSHIFT MODU'}
+              </span>
+            </div>
             <h3 className="text-xl font-medium text-slate-200 mt-1">
               {activeTemplate ? activeTemplate.name : 'Vardiya Atanmadı'}
             </h3>
             {activeTemplate && activeTemplate.activities.length > 0 && (
               <p className="text-xs text-slate-400 mt-0.5">
-                {activeTemplate.activities.length} Aktivite • {activeTemplate.activities[0].startTime} - {activeTemplate.activities[activeTemplate.activities.length - 1].endTime}
+                {durationMode
+                  ? `Toplam ${Math.round(durationTargetSecs / 60)} dk • Çalışılan ${formatRemaining(payWorkSecs)}`
+                  : `${activeTemplate.activities.length} Aktivite • ${activeTemplate.activities[0].startTime} - ${activeTemplate.activities[activeTemplate.activities.length - 1].endTime}`}
               </p>
             )}
           </div>
@@ -518,9 +552,37 @@ export default function Dashboard() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h1 className="text-3xl font-semibold text-white tracking-wide">{currentActivity.name}</h1>
-                    <p className="text-sm text-slate-400 mt-1">
-                      Saat: <span className="text-slate-200 font-medium">{currentActivity.startTime} - {currentActivity.endTime}</span> ({currentActivity.duration} dk)
-                    </p>
+                    {durationMode ? (
+                      <div className="mt-3 max-w-lg">
+                        <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5">
+                          <p>
+                            <span className="text-xs text-slate-400">Toplam Süre:</span>{' '}
+                            <span className="font-mono font-bold text-slate-200 text-lg">{formatRemaining(durationTargetSecs)}</span>
+                          </p>
+                          <p>
+                            <span className="text-xs text-slate-400">Çalışılan:</span>{' '}
+                            <span className="font-mono font-semibold text-emerald-300 text-lg">{formatRemaining(payWorkSecs)}</span>
+                          </p>
+                          <p>
+                            <span className="text-xs text-slate-400">Kalan:</span>{' '}
+                            <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(Math.max(0, durationTargetSecs - payWorkSecs))}</span>
+                          </p>
+                        </div>
+                        <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5 mt-3">
+                          <div
+                            className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-1000"
+                            style={{ width: `${Math.min(100, (payWorkSecs / Math.max(1, durationTargetSecs)) * 100)}%` }}
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          Hedefin %{Math.min(100, Math.round((payWorkSecs / Math.max(1, durationTargetSecs)) * 100))}'i tamamlandı
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-400 mt-1">
+                        Saat: <span className="text-slate-200 font-medium">{currentActivity.startTime} - {currentActivity.endTime}</span> ({currentActivity.duration} dk)
+                      </p>
+                    )}
                     {currentActivity.notes && (
                       <div className="mt-3 p-3 bg-white/5 border border-white/5 rounded-lg max-w-lg">
                         <p className="text-xs text-slate-300 italic">{currentActivity.notes}</p>
@@ -611,17 +673,48 @@ export default function Dashboard() {
                   </button>
                 </div>
               </div>
+            ) : awaitingConfirmation && pendingActivity ? (
+              <div className="mt-4">
+                <div className="flex items-start gap-4">
+                  <div className="text-5xl p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 shadow-lg shadow-amber-500/10">⏳</div>
+                  <div>
+                    <h1 className="text-2xl font-semibold text-amber-300">Onay Bekliyor</h1>
+                    <p className="text-sm text-slate-400 mt-1">
+                      {pendingAfter?.isBreak
+                        ? 'Mola bitti. Sıradaki etkinliğe geçmek için onayınız gerekiyor — onaylayana kadar geçen süre aşım olarak sayılıyor.'
+                        : 'Etkinlik bitti. Sıradaki etkinliğe geçmek için onayınız gerekiyor — onaylayana kadar geçen süre aşım olarak sayılıyor.'}
+                    </p>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Sıradaki: <span className="text-slate-200 font-medium">{pendingActivity.icon} {pendingActivity.name}</span> — {pendingActivity.startTime}'de başlamalı
+                    </p>
+                    <p className="mt-2">
+                      <span className="text-xs text-slate-400">Toplam Aşım:</span>{' '}
+                      <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds)}</span>
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={handleConfirmPending}
+                    className="inline-flex items-center gap-2 accent-solid-strong hover:accent-solid text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md accent-glow-lg"
+                  >
+                    ✔ Onayla ve Geç — {pendingActivity.icon} {pendingActivity.name}
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="mt-4">
                 <div className="flex items-start gap-4">
                   <div className="text-5xl p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 shadow-lg shadow-amber-500/10">⏳</div>
                   <div>
                     <h1 className="text-2xl font-semibold text-amber-300">
-                      {isOvertime ? 'Aşım: Vardiya Saati Doldu' : 'Aşım (Boşta)'}
+                      {isOvertime ? (durationMode ? 'Aşım: Hedef Süre Doldu' : 'Aşım: Vardiya Saati Doldu') : 'Aşım (Boşta)'}
                     </h1>
                     <p className="text-sm text-slate-400 mt-1">
                       {isOvertime
-                        ? 'Tüm aktiviteler bitti ancak vardiyayı tamamlamadınız. Geçen her dakika aşım olarak sayılıyor.'
+                        ? durationMode
+                          ? 'Hedef süreyi doldurdunuz ancak vardiyayı tamamlamadınız. Geçen her dakika aşım olarak sayılıyor.'
+                          : 'Tüm aktiviteler bitti ancak vardiyayı tamamlamadınız. Geçen her dakika aşım olarak sayılıyor.'
                         : 'Şu anda boştasınız. Bir aktiviteye başlayana kadar geçen süre aşım olarak sayılıyor.'}
                     </p>
                     {nextActivity && !isOvertime && (
@@ -657,7 +750,7 @@ export default function Dashboard() {
                   <div className="mt-4 flex justify-end">
                     <button
                       onClick={handleGoToNextActivity}
-                      className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-blue-500/20"
+                      className="inline-flex items-center gap-2 accent-solid-strong hover:accent-solid text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md accent-glow-lg"
                     >
                       ▶ Sıradaki Aktiviteye Geç — {nextActivity.icon} {nextActivity.name} ({nextActivity.startTime})
                     </button>
@@ -713,7 +806,7 @@ export default function Dashboard() {
                 <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5 p-0.5">
                   <div
                     className={`h-full rounded-full transition-all duration-1000 ease-out ${
-                      isOvertime ? 'bg-rose-500' : 'bg-gradient-to-r from-blue-500 to-indigo-500'
+                      isOvertime ? 'bg-rose-500' : 'accent-grad-h'
                     }`}
                     style={{ width: `${shiftProgress}%` }}
                   />
@@ -815,17 +908,17 @@ export default function Dashboard() {
               // Intensity: 0 = no data, 1 = <2h, 2 = 2-4h, 3 = 4-6h, 4 = >6h
               const workedH = worked / 3600
               const intensity = !hasData ? 0 : workedH < 2 ? 1 : workedH < 4 ? 2 : workedH < 6 ? 3 : 4
-              const bgCls = intensity === 0 ? 'bg-slate-800/50' : intensity === 1 ? 'bg-blue-900/60' : intensity === 2 ? 'bg-blue-700/60' : intensity === 3 ? 'bg-blue-500/70' : 'bg-blue-400/80'
+              const bgCls = intensity === 0 ? 'bg-slate-800/50' : intensity === 1 ? 'accent-heat-1' : intensity === 2 ? 'accent-heat-2' : intensity === 3 ? 'accent-heat-3' : 'accent-heat-4'
 
               const d = new Date(dateStr + 'T00:00:00')
               const dayLabel = DAY_SHORT[d.getDay()]
 
               return (
                 <div key={dateStr} className="flex flex-col items-center gap-1.5">
-                  <span className={`text-[10px] font-medium ${today ? 'text-blue-400' : 'text-slate-600'}`}>{dayLabel}</span>
+                  <span className={`text-[10px] font-medium ${today ? 'accent-text' : 'text-slate-600'}`}>{dayLabel}</span>
                   <div
                     title={hasData ? `Çalışılan: ${Math.floor(worked / 3600)}sa ${Math.floor((worked % 3600) / 60)}dk${idle > 0 ? ` · Aşım: ${Math.floor(idle / 3600)}sa ${Math.floor((idle % 3600) / 60)}dk` : ''}${brk > 0 ? ` · Mola: ${Math.floor(brk / 60)}dk` : ''}` : 'Veri yok'}
-                    className={`w-full aspect-square rounded-lg border transition-all duration-200 flex items-center justify-center ${bgCls} ${today ? 'border-blue-500/50' : 'border-white/5'} ${completed ? 'ring-1 ring-emerald-500/50' : ''}`}
+                    className={`w-full aspect-square rounded-lg border transition-all duration-200 flex items-center justify-center ${bgCls} ${today ? 'accent-border' : 'border-white/5'} ${completed ? 'ring-1 ring-emerald-500/50' : ''}`}
                   >
                     {completed && <span className="text-[8px] text-emerald-400">✓</span>}
                     {idle > 300 && !completed && hasData && <span className="text-[8px] text-amber-400">!</span>}
@@ -841,7 +934,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-3 mt-3 justify-end">
             <span className="text-[9px] text-slate-600">Az</span>
             {[0, 1, 2, 3, 4].map(lvl => (
-              <div key={lvl} className={`w-3 h-3 rounded-sm ${lvl === 0 ? 'bg-slate-800' : lvl === 1 ? 'bg-blue-900/60' : lvl === 2 ? 'bg-blue-700/60' : lvl === 3 ? 'bg-blue-500/70' : 'bg-blue-400/80'}`} />
+              <div key={lvl} className={`w-3 h-3 rounded-sm ${lvl === 0 ? 'bg-slate-800' : lvl === 1 ? 'accent-heat-1' : lvl === 2 ? 'accent-heat-2' : lvl === 3 ? 'accent-heat-3' : 'accent-heat-4'}`} />
             ))}
             <span className="text-[9px] text-slate-600">Çok</span>
             <span className="text-[9px] text-slate-600 ml-2">✓ = Tamamlandı</span>
