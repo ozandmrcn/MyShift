@@ -1,13 +1,17 @@
 # Dependencies
 node_modules/
+.pnp.*
+.yarn/cache/
 
 # Build outputs
 out/
 dist/
 release/
+*.tsbuildinfo
 
 # electron-vite temporary config files
 electron.vite.config.*.mjs
+.vite/
 
 # Logs
 *.log
@@ -38,6 +42,8 @@ desktop.ini
 *.temp
 *.swp
 *.swo
+*.orig
+*.rej
 *~
 
 # electron-builder config overrides
