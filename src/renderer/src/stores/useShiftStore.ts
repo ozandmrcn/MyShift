@@ -372,8 +372,11 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
         const savedIdle = (await api.store.get('idleState', null)) as {
           idleAccumMs?: number
           idleLogMs?: number
+          idleStartTs?: number | null
           paybackAccumMs?: number
+          paybackStartTs?: number | null
           payWorkAccumMs?: number
+          payWorkStartTs?: number | null
           payWorkDay?: string
           idleDay?: string
         } | null
@@ -414,13 +417,13 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           completedShifts: prunedCompleted,
           dailyLogs: prunedDayLogs,
           idleAccumMs: sameDay ? savedIdle.idleAccumMs ?? 0 : 0,
-          idleStartTs: null,
+          idleStartTs: sameDay ? savedIdle.idleStartTs ?? null : null,
           idleDay: todayStr,
           idleLogMs: sameDay ? savedIdle.idleLogMs ?? 0 : 0,
           paybackAccumMs: sameDay ? savedIdle.paybackAccumMs ?? 0 : 0,
-          paybackStartTs: null,
+          paybackStartTs: sameDay ? savedIdle.paybackStartTs ?? null : null,
           payWorkAccumMs: sameDay ? savedIdle.payWorkAccumMs ?? 0 : 0,
-          payWorkStartTs: null,
+          payWorkStartTs: sameDay ? savedIdle.payWorkStartTs ?? null : null,
           payWorkDay: todayStr,
           runningBreak: breakSameDay ? savedBreak.runningBreak ?? null : null,
           breakDay: todayStr,
@@ -456,13 +459,13 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           settings: localSettings ? JSON.parse(localSettings) : defaultSettings,
           completedShifts: localCompleted ? JSON.parse(localCompleted) : [],
           idleAccumMs: bSameDay ? idleParsed.idleAccumMs ?? 0 : 0,
-          idleStartTs: null,
+          idleStartTs: bSameDay ? idleParsed.idleStartTs ?? null : null,
           idleDay: bToday,
           idleLogMs: bSameDay ? idleParsed.idleLogMs ?? 0 : 0,
           paybackAccumMs: bSameDay ? idleParsed.paybackAccumMs ?? 0 : 0,
-          paybackStartTs: null,
+          paybackStartTs: bSameDay ? idleParsed.paybackStartTs ?? null : null,
           payWorkAccumMs: bSameDay ? idleParsed.payWorkAccumMs ?? 0 : 0,
-          payWorkStartTs: null,
+          payWorkStartTs: bSameDay ? idleParsed.payWorkStartTs ?? null : null,
           payWorkDay: bToday,
           runningBreak: bBreakSameDay ? breakParsed.runningBreak ?? null : null,
           breakDay: bToday,
@@ -1045,3 +1048,12 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   }
   }
 })
+
+// When the main process finishes a full data import, reload everything so the
+// renderer reflects the freshly restored templates, settings, logs, etc.
+if (typeof window !== 'undefined') {
+  const api = (window as any).electronAPI
+  api?.data?.onImported?.(() => {
+    useShiftStore.getState().loadFromStore()
+  })
+}

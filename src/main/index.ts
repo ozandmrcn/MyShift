@@ -480,32 +480,47 @@ ipcMain.handle('surveillance:analyze', async (_event, days?: number): Promise<Ai
   return analyzeSurveillance(cfg, Number(days) || 7)
 })
 
-// 9. Data export / import — bundles the AI profile + surveillance logs into one
-// JSON file the user can back up, transfer, or restore on another machine.
+// 9. Data export / import — bundles EVERYTHING (store, AI profile, surveillance)
+// into one JSON file the user can back up, transfer, or restore on another machine.
 export interface DataExportBundle {
   app: 'myshift'
   type: 'myshift-data-export'
-  version: 1
+  version: 2
   exportedAt: string
   data: {
+    store: Record<string, unknown>   // entire electron-store content
     aiProfile: AiProfile
     surveillance: Record<string, string> // "YYYY-MM-DD.jsonl" -> file content
   }
 }
 
 function buildExportBundle(): DataExportBundle {
+  // 1. Snapshot every key in electron-store (templates, settings, completedShifts,
+  //    dailyLogs, todayDetail, idleState, breakState, windowBounds — everything).
+  const storeData: Record<string, unknown> = {}
+  try {
+    const all = store.store  // electron-store's built-in full-object getter
+    if (all && typeof all === 'object') {
+      for (const [k, v] of Object.entries(all as Record<string, unknown>)) {
+        storeData[k] = v
+      }
+    }
+  } catch { /* empty store */ }
+
+  // 2. Surveillance JSONL files.
   const files: Record<string, string> = {}
   let names: string[] = []
   try { names = readdirSync(surveillanceDir()).filter(n => n.endsWith('.jsonl')) } catch { /* no dir yet */ }
   for (const name of names) {
     try { files[name] = readFileSync(join(surveillanceDir(), name), 'utf8') } catch { /* skip */ }
   }
+
   return {
     app: 'myshift',
     type: 'myshift-data-export',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
-    data: { aiProfile: loadAiProfile(), surveillance: files }
+    data: { store: storeData, aiProfile: loadAiProfile(), surveillance: files }
   }
 }
 
@@ -526,7 +541,7 @@ ipcMain.handle('data:export', async (_event): Promise<{ ok: boolean; file?: stri
   }
 })
 
-ipcMain.handle('data:import', async (_event): Promise<{ ok: boolean; notes?: number; files?: number; error?: string }> => {
+ipcMain.handle('data:import', async (_event): Promise<{ ok: boolean; notes?: number; files?: number; storeKeys?: number; error?: string }> => {
   try {
     const result = await dialog.showOpenDialog({
       title: 'MyShift Verilerini İçe Aktar',
@@ -536,14 +551,27 @@ ipcMain.handle('data:import', async (_event): Promise<{ ok: boolean; notes?: num
     if (result.canceled || !result.filePaths[0]) return { ok: false, error: 'iptal' }
     const raw = JSON.parse(readFileSync(result.filePaths[0], 'utf8'))
     if (raw?.type !== 'myshift-data-export') return { ok: false, error: 'Bu bir MyShift veri dosyası değil.' }
+    const ver = raw.version ?? 1
     const data = raw.data ?? {}
 
-    // Merge AI profile notes (dedupe handled inside appendAiNote)
+    let storeKeys = 0
+
+    // Version 2+: restore entire electron-store content.
+    if (ver >= 2 && data.store && typeof data.store === 'object') {
+      for (const [k, v] of Object.entries(data.store as Record<string, unknown>)) {
+        store.set(k, v)
+        storeKeys++
+      }
+      // Notify the renderer so it can call loadFromStore() and pick up changes.
+      mainWindow?.webContents.send('data:imported')
+    }
+
+    // AI profile notes (dedupe handled inside appendAiNote).
     const before = loadAiProfile().notes.length
     for (const note of data.aiProfile?.notes ?? []) appendAiNote(String(note.text ?? ''))
     const after = loadAiProfile().notes.length
 
-    // Merge surveillance day files line-by-line (no duplicates)
+    // Surveillance day files — merge line-by-line (no duplicates).
     let files = 0
     const dir = surveillanceDir()
     for (const [name, content] of Object.entries(data.surveillance ?? {})) {
@@ -565,7 +593,7 @@ ipcMain.handle('data:import', async (_event): Promise<{ ok: boolean; notes?: num
       if (added > 0) files++
     }
 
-    return { ok: true, notes: after - before, files }
+    return { ok: true, notes: after - before, files, storeKeys }
   } catch (e) {
     return { ok: false, error: String(e) }
   }

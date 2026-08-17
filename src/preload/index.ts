@@ -53,6 +53,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   data: {
     export: () => ipcRenderer.invoke('data:export'),
     import: () => ipcRenderer.invoke('data:import'),
-    clearSurveillance: () => ipcRenderer.invoke('data:clear-surveillance')
+    clearSurveillance: () => ipcRenderer.invoke('data:clear-surveillance'),
+    onImported: (callback: () => void) => {
+      const listener = () => callback()
+      ipcRenderer.on('data:imported', listener)
+      return () => ipcRenderer.removeListener('data:imported', listener)
+    }
   }
 })

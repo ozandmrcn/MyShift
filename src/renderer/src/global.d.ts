@@ -42,8 +42,9 @@ export interface IElectronAPI {
   }
   data: {
     export: () => Promise<{ ok: boolean; file?: string; error?: string }>
-    import: () => Promise<{ ok: boolean; notes?: number; files?: number; error?: string }>
+    import: () => Promise<{ ok: boolean; notes?: number; files?: number; storeKeys?: number; error?: string }>
     clearSurveillance: () => Promise<{ ok: boolean; error?: string }>
+    onImported?: (callback: () => void) => () => void
   }
 }
 
@@ -71,6 +72,10 @@ declare global {
     currentAppSeconds?: number
     topApps?: { name: string; seconds: number }[]
     recentLines?: string[]
+    typedText?: string | null
+    typedCharsToday?: number
+    typedHistory?: string[]
+    profileNotes?: string[]
   }
 
   interface AiCommentResult {

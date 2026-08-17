@@ -127,6 +127,11 @@ export default function SettingsView() {
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsError, setModelsError] = useState(false)
 
+  // Full data export/import feedback.
+  const [exportFlash, setExportFlash] = useState('')
+  const [importFlash, setImportFlash] = useState('')
+  const [importing, setImporting] = useState(false)
+
   const loadOpenRouterModels = useCallback(async () => {
     if (!api?.ai?.getOpenRouterModels) return
     setModelsLoading(true)
@@ -811,6 +816,64 @@ export default function SettingsView() {
               </div>
             }
           />
+        </Section>
+
+        {/* Tüm Veriler — Dışa / İçe Aktar */}
+        <Section
+          icon="📦"
+          title="Tüm Verileri İçe / Dışa Aktar"
+          description="Şablonlar, ayarlar, tema, geçiş kayıtları, gözlem verileri, AI profili — her şey tek dosyada"
+        >
+          <div className="p-4 flex flex-col gap-4">
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Tüm verileriniz (vardiya şablonları, ayarlar, tema seçimi, geçmiş kayıtları, gözlem JSONL'leri, AI profil notları) tek bir JSON dosyasında dışa aktarılır. Aynı dosyayı başka bir bilgisayara aktararak veya yedekleyerek tüm ayarlarınızı koruyabilirsiniz.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={async () => {
+                  if (!api?.data) return
+                  const r = await api.data.export()
+                  if (r.ok) {
+                    setExportFlash('Dışa aktarıldı')
+                    setTimeout(() => setExportFlash(''), 3000)
+                  }
+                }}
+                className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5"
+              >
+                📤 Dışa Aktar
+              </button>
+              <button
+                onClick={async () => {
+                  if (!api?.data) return
+                  if (!window.confirm('Mevcut tüm veriler, içe aktarılacak dosyadaki verilerle değiştirilecek. Devam edilsin mi?')) return
+                  setImporting(true)
+                  setImportFlash('')
+                  try {
+                    const r = await api.data.import()
+                    if (r.ok) {
+                      const parts: string[] = []
+                      if (r.storeKeys) parts.push(`${r.storeKeys} ayar`)
+                      if (r.notes) parts.push(`${r.notes} profil notu`)
+                      if (r.files) parts.push(`${r.files} gözlem dosyası`)
+                      setImportFlash(parts.length > 0 ? `İçe aktarıldı: ${parts.join(', ')}` : 'İçe aktarıldı')
+                    } else {
+                      setImportFlash(r.error || 'İçe aktarma başarısız')
+                    }
+                  } finally {
+                    setImporting(false)
+                    setTimeout(() => setImportFlash(''), 4000)
+                  }
+                }}
+                disabled={importing}
+                className="bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-300 text-xs font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 disabled:opacity-40"
+              >
+                {importing ? '⏳ İçe aktarılıyor…' : '📥 İçe Aktar'}
+              </button>
+            </div>
+            {(exportFlash || importFlash) && (
+              <p className="text-[11px] text-emerald-400 font-medium">{exportFlash || importFlash}</p>
+            )}
+          </div>
         </Section>
 
         {/* Veri */}
