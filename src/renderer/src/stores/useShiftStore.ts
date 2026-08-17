@@ -970,10 +970,10 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     persistBreak()
     persistToday()
 
-    // Start today's DayLog fresh and un-complete the day (no past day is touched)
+    // Start today's DayLog fresh. Do NOT un-complete the day — clearing today's
+    // counters should not re-open the shift and trigger aşım.
     const freshLog: DayLog = { workedSeconds: 0, idleSeconds: 0, paybackSeconds: 0, breakSeconds: 0, breakCount: 0, completed: false }
     set({ dailyLogs: { ...get().dailyLogs, [day]: freshLog } })
-    get().uncompleteShift(day)
   },
 
   showReminder: (kind, message) => {
@@ -993,13 +993,12 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   clearHistory: () => {
     const d = new Date()
     const today = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
-    const { dailyLogs } = get()
+    const { dailyLogs, completedShifts } = get()
     const newLogs: Record<string, DayLog> = {}
-    const newCompleted: string[] = []
-
-    // Keep today's live log (the current day is not "geçmiş"); wipe everything else
+    // Keep today's log AND today's completed status — only wipe the past.
     const todayLog = dailyLogs[today]
     if (todayLog) newLogs[today] = todayLog
+    const newCompleted = completedShifts.filter(d => d === today)
 
     set({ dailyLogs: newLogs, completedShifts: newCompleted })
 
