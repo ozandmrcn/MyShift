@@ -14,7 +14,8 @@ import {
   MotivationContext,
   MotivationLine,
   COLD_COLORS,
-  getMoodColor
+  getMoodColor,
+  TFunction
 } from './motivationEngine'
 
 function stripEmoji(t: string): string {
@@ -33,7 +34,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
     p.then((v) => {
       if (!done) { done = true; clearTimeout(timer); resolve(v) }
     }).catch(() => {
-      if (!done) { done = true; clearTimeout(timer); resolve(null) }
+      if (!done) { done = true; resolve(null) }
     })
   })
 }
@@ -48,7 +49,7 @@ export interface CommentOptions {
   recent?: string[]
 }
 
-export async function generateComment(ctx: MotivationContext, opts: CommentOptions = {}): Promise<MotivationLine> {
+export async function generateComment(t: TFunction, ctx: MotivationContext, opts: CommentOptions = {}): Promise<MotivationLine> {
   const recent = opts.recent ?? []
   const api = window.electronAPI
   const settings = useShiftStore.getState().settings
@@ -89,6 +90,6 @@ export async function generateComment(ctx: MotivationContext, opts: CommentOptio
   }
 
   return opts.ambient
-    ? generateAmbientLine(ctx, opts.lastText, recent)
-    : generateMotivationLine(ctx, opts.lastText, recent)
+    ? generateAmbientLine(t, ctx, opts.lastText, recent)
+    : generateMotivationLine(t, ctx, opts.lastText, recent)
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useT } from '../i18n/useT'
 import { useLiveShiftEngine, formatRemaining, timeToSeconds } from '../hooks/useLiveShiftEngine'
 import { useShiftStore, Activity } from '../stores/useShiftStore'
 
@@ -26,6 +27,7 @@ export default function Timeline() {
     timeOffset
   } = useLiveShiftEngine()
   const { uncompleteShift, setTimeOffset, startPayback, stopPayback, finishPayback } = useShiftStore()
+  const { t } = useT()
   const activeItemRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [scrolled, setScrolled] = useState(false)

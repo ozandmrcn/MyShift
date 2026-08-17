@@ -51,6 +51,8 @@ export default function App() {
         const d = new Date()
         const today = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
         store.completeShift(today)
+      } else if (action === 'reset-breaks') {
+        store.resetBreaks()
       }
     })
     return () => off?.()
@@ -226,7 +228,7 @@ export default function App() {
                     <Route path="/history" element={<History />} />
                     <Route path="/data" element={<DataView />} />
                     <Route path="/settings" element={<SettingsView />} />
-                    <Route path="*" element={<Navigate to="/today" replace />} />
+                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
                   </>
                 )}
               </Routes>

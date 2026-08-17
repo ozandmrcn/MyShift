@@ -3,8 +3,10 @@ import { useLiveShiftEngine, timeToSeconds, formatRemaining } from '../hooks/use
 import { useShiftStore, type BreakType, type BreakSubtype } from '../stores/useShiftStore'
 import { MotivationContext, MotivationLine, MotivationState, HIGHLIGHT } from '../utils/motivationEngine'
 import { generateComment } from '../utils/commentEngine'
+import { useT } from '../i18n/useT'
 import TypewriterText from './TypewriterText'
 import Timeline from './Timeline'
+import WeatherWidget from './WeatherWidget'
 
 export function getColors(color: string) {
   const map: Record<string, { bg: string; text: string; border: string; glow: string; raw: string }> = {
@@ -121,6 +123,7 @@ function BreakCard() {
   const startBreak = useShiftStore((s) => s.startBreak)
   const stopBreak = useShiftStore((s) => s.stopBreak)
   const resetBreaks = useShiftStore((s) => s.resetBreaks)
+  const payPaused = useShiftStore((s) => s.payPaused)
 
   // Two-stage inline confirm so a tiny reset button never wipes data by accident
   const [confirmReset, setConfirmReset] = useState(false)
@@ -238,11 +241,14 @@ function BreakCard() {
                     <button
                       key={it.subtype}
                       type="button"
+                      disabled={payPaused}
                       onClick={() => startBreak(g.type, it.subtype, over)}
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-medium transition-all hover:scale-[1.03] ${
-                        over
-                          ? 'bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/20'
-                          : 'bg-slate-800/80 border-white/10 text-slate-200 hover:bg-slate-700'
+                        payPaused
+                          ? 'opacity-40 cursor-not-allowed bg-slate-800/40 border-white/5 text-slate-500'
+                          : over
+                            ? 'bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/20'
+                            : 'bg-slate-800/80 border-white/10 text-slate-200 hover:bg-slate-700'
                       }`}
                     >
                       <span>{it.icon}</span>
@@ -264,6 +270,7 @@ function BreakCard() {
 
 // ── Motivasyon mesajı ──────────────────────────────────────────────────────────
 export default function Dashboard() {
+  const { t } = useT()
   const {
     currentTime,
     currentTimeSecs,
@@ -282,9 +289,11 @@ export default function Dashboard() {
     paybackSeconds,
     paybackRunning,
     workedSeconds,
+    breakSeconds,
     breakRunning,
     resetIdle,
     effectiveTime,
+    effectiveSecs,
     timeOffset,
     durationMode,
     durationTargetSecs,
@@ -296,14 +305,17 @@ export default function Dashboard() {
     isChronoBreak = false,
     chronoWorkSecs = 0,
     chronoBreakSecs = 0,
-    chronoMode: chronoModeFromEngine = 'idle',
     chronoStartedAt: _chronoStartedAt
   } = useLiveShiftEngine()
 
-  const { completeShift, extendActiveShift, uncompleteShift, setTimeOffset, stopPayback, finishPayback, confirmActivity, dailyLogs } = useShiftStore()
+  const { completeShift, extendActiveShift, uncompleteShift, setTimeOffset, stopPayback, finishPayback, confirmActivity, dailyLogs, togglePayPause } = useShiftStore()
   const mode = useShiftStore((s) => s.settings.mode)
+  const updateSettings = useShiftStore((s) => s.updateSettings)
+  const settings = useShiftStore((s) => s.settings)
+  const payPaused = useShiftStore((s) => s.payPaused)
   const runningBreak = useShiftStore((s) => s.runningBreak)
   const stopBreak = useShiftStore((s) => s.stopBreak)
+  const breakUsage = useShiftStore((s) => s.breakUsage)
   const chronoStartWork = useShiftStore((s) => s.chronoStartWork)
   const chronoStartBreak = useShiftStore((s) => s.chronoStartBreak)
   const chronoStop = useShiftStore((s) => s.chronoStop)
@@ -315,9 +327,10 @@ export default function Dashboard() {
 
   // Idle (aşım) state. In Pay mode an over-budget break (bütçesi dolmuşken
   // başlatılan mola) NOT a real break — it counts as aşım while it runs.
+  // Chrono mode does NOT have aşım — "idle" just means "not started / paused".
   const overBudgetBreak = mode === 'pay' && !!runningBreak && runningBreak.overBudget
   const isIdle = mode === 'chrono'
-    ? chronoModeFromEngine === 'idle' && chronoWorkAccumMs > 0
+    ? false
     : (!!activeTemplate && activeTemplate.activities.length > 0
       && ((!currentActivity && !isBeforeShift && !isShiftFinished) || overBudgetBreak))
 
@@ -336,25 +349,49 @@ export default function Dashboard() {
   const isCurrentLast = !!currentActivity && sortedActivities.length > 0
     && sortedActivities[sortedActivities.length - 1].id === currentActivity.id
 
-  const realSecs = timeToSeconds(currentTimeSecs)
-  const shiftEndSecs = sortedActivities.length ? timeToSeconds(sortedActivities[sortedActivities.length - 1].endTime) : 0
+  // Pay/Chrono: use offset-aware effective time so the time offset feature works correctly.
+  // MyShift: use the raw clock since its engine state is template-based, not time-based.
+  const realSecs = mode === 'pay' || mode === 'chrono' ? effectiveSecs : timeToSeconds(currentTimeSecs)
+  // For Pay mode: use settings times instead of template
+  const payShiftStartSecs = mode === 'pay' ? timeToSeconds(`${settings.payShiftStart}:00`) : 0
+  const payShiftEndSecs = mode === 'pay' ? timeToSeconds(`${settings.payShiftEnd}:00`) : 0
+  const effectiveShiftEndSecs = mode === 'pay' ? payShiftEndSecs : (sortedActivities.length ? timeToSeconds(sortedActivities[sortedActivities.length - 1].endTime) : 0)
+  const effectiveShiftStartSecs = mode === 'pay' ? payShiftStartSecs : (sortedActivities.length ? timeToSeconds(sortedActivities[0].startTime) : 0)
 
   let status = { text: '—', cls: 'text-slate-400' }
-  if (isShiftFinished) status = { text: 'Tamamlandı', cls: 'text-emerald-400' }
-  else if (isBeforeShift) status = { text: 'Başlamadı', cls: 'text-slate-400' }
-  else if (paybackRunning) status = { text: 'Payback', cls: 'text-amber-400' }
-  else if (breakRunning && !overBudgetBreak) status = { text: 'Molada', cls: 'text-emerald-400' }
-  else if (isIdle) status = { text: 'Aşımda', cls: 'text-amber-400' }
-  else if (currentActivity) status = { text: 'Devam Ediyor', cls: 'accent-text' }
-  else status = { text: '—', cls: 'text-slate-400' }
+  if (mode === 'chrono') {
+    if (isChronoWork) status = { text: 'Çalışıyor', cls: 'text-amber-400' }
+    else if (isChronoBreak) status = { text: 'Molada', cls: 'text-emerald-400' }
+    else status = { text: 'Bekliyor', cls: 'text-slate-400' }
+  } else {
+    if (isShiftFinished) status = { text: 'Tamamlandı', cls: 'text-emerald-400' }
+    else if (isBeforeShift) status = { text: 'Başlamadı', cls: 'text-slate-400' }
+    else if (paybackRunning) status = { text: 'Payback', cls: 'text-amber-400' }
+    else if (breakRunning && !overBudgetBreak) status = { text: 'Molada', cls: 'text-emerald-400' }
+    else if (isIdle) status = { text: 'Aşımda', cls: 'text-amber-400' }
+    else if (currentActivity) status = { text: 'Devam Ediyor', cls: 'accent-text' }
+    else status = { text: '—', cls: 'text-slate-400' }
+  }
 
-  const stats = [
+  // Stats — mode-aware
+  const stats = mode === 'pay' ? [
+    { key: 'start', label: 'Vardiya Başlangıcı', value: settings.payShiftStart, icon: '🌅', accent: false },
+    { key: 'end', label: 'Vardiya Bitişi', value: settings.payShiftEnd, icon: '🌇', accent: false },
+    { key: 'planned', label: settings.payTargetMode === 'duration' ? 'Hedef Süre' : 'Planlanan Süre', value: settings.payTargetMode === 'duration' ? `${settings.payDurationMin} dk` : formatRemaining((payShiftEndSecs - payShiftStartSecs)), icon: '📋', accent: false },
+    { key: 'worked', label: 'Çalışılan Süre', value: formatRemaining(workedSeconds), icon: '💪', accent: false },
+    { key: 'idle', label: 'Aşım (Günün Toplamı)', value: idleLogSeconds > 0 ? formatRemaining(idleLogSeconds) : '—', icon: '📈', accent: idleLogSeconds > 0 },
+    { key: 'remaining', label: 'Kalan Süre', value: durationMode ? formatRemaining(Math.max(0, durationTargetSecs - payWorkSecs)) : (realSecs >= effectiveShiftEndSecs ? '—' : formatRemaining(Math.max(0, effectiveShiftEndSecs - realSecs))), icon: '⏱', accent: false }
+  ] : mode === 'chrono' ? [
+    { key: 'worked', label: 'Toplam Çalışma', value: formatRemaining(chronoWorkSecs), icon: '💪', accent: false },
+    { key: 'break', label: 'Toplam Mola', value: formatRemaining(chronoBreakSecs), icon: '☕', accent: false },
+    { key: 'sessions', label: 'Çalışma Durumu', value: isChronoWork ? 'Aktif' : isChronoBreak ? 'Mola' : 'Duraklatıldı', icon: '⏱', accent: false }
+  ] : [
     { key: 'start', label: 'Vardiya Başlangıcı', value: shiftStartTime, icon: '🌅', accent: false },
     { key: 'end', label: 'Vardiya Bitişi', value: shiftEndTime, icon: '🌇', accent: false },
     { key: 'planned', label: 'Planlanan Süre', value: formatRemaining(plannedMinutes * 60), icon: '📋', accent: false },
     { key: 'worked', label: 'Çalışılan Süre', value: formatRemaining(workedSeconds), icon: '💪', accent: false },
     { key: 'idle', label: 'Aşım (Günün Toplamı)', value: idleLogSeconds > 0 ? formatRemaining(idleLogSeconds) : '—', icon: '📈', accent: idleLogSeconds > 0 },
-    { key: 'remaining', label: 'Kalan Süre', value: realSecs >= shiftEndSecs ? '—' : formatRemaining(Math.max(0, shiftEndSecs - realSecs)), icon: '⏱', accent: false }
+    { key: 'remaining', label: 'Kalan Süre', value: realSecs >= effectiveShiftEndSecs ? '—' : formatRemaining(Math.max(0, effectiveShiftEndSecs - realSecs)), icon: '⏱', accent: false }
   ]
 
   // Weekly heatmap — last 7 days from dailyLogs
@@ -386,25 +423,28 @@ export default function Dashboard() {
 
   // ── Motivation engine (context-aware "AI" one-liner) ────────────────────────
   // State classification mirrors the old getMotivationMessage priority order.
-  const state: MotivationState = !activeTemplate || activeTemplate.activities.length === 0
-    ? 'no-shift'
-    : isShiftFinished ? 'finished'
-    : paybackRunning ? 'payback'
-    : isOvertime ? 'overtime'
-    : isIdle ? 'gap'
-    : isBeforeShift ? 'before'
-    : 'active'
+  const state: MotivationState =
+    mode === 'chrono'
+      ? (isChronoWork ? 'active' : isChronoBreak ? 'gap' : chronoWorkAccumMs > 0 ? 'gap' : 'no-shift')
+      : !activeTemplate || activeTemplate.activities.length === 0
+        ? 'no-shift'
+        : isShiftFinished ? 'finished'
+        : paybackRunning ? 'payback'
+        : isOvertime ? 'overtime'
+        : isIdle ? 'gap'
+        : isBeforeShift ? 'before'
+        : 'active'
 
   const appUsage = useShiftStore((s) => s.appUsage)
 
   const buildCtx = (): MotivationContext => ({
     state,
-    activityName: currentActivity?.name,
-    activityIcon: currentActivity?.icon,
-    nextLabel: nextActivity ? `${nextActivity.icon} ${nextActivity.name}` : '',
+    activityName: currentActivity?.name ?? (mode === 'chrono' && isChronoWork ? 'Kronometre Çalışması' : undefined),
+    activityIcon: currentActivity?.icon ?? (mode === 'chrono' && isChronoWork ? '⏱️' : undefined),
+    nextLabel: nextActivity ? `${nextActivity.icon} ${nextActivity.name}` : (mode === 'chrono' && isChronoBreak ? '☕ Molayı Bitir' : ''),
     isLastActivity: isCurrentLast,
     shiftProgress,
-    shiftName: activeTemplate?.name,
+    shiftName: activeTemplate?.name ?? (mode === 'chrono' ? 'Krono Modu' : undefined),
     idleSeconds,
     workedSeconds,
     breakSeconds: (isIdle || isOvertime) ? idleSeconds : 0,
@@ -460,21 +500,20 @@ export default function Dashboard() {
 
   return (
     <>
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-6.5rem)] overflow-y-auto pr-1">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full overflow-y-auto pr-1">
 
       {/* Left Columns - Live Stats */}
       <div className="lg:col-span-2 flex flex-col gap-6">
 
         {/* Clock & Active Shift Summary */}
-        <div className="fluent-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
+        <div className="fluent-card p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="min-w-0 flex-shrink-0" style={{ minWidth: '260px' }}>
             <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">SİSTEM SAATİ</span>
-            <h2 className="text-5xl font-light text-white tracking-tight mt-1">
+            <h2 className={`text-4xl lg:text-5xl font-light text-white tracking-tight mt-1 tabular-nums whitespace-nowrap clock-font-${settings.clockFont}`}>
               {currentTime}
-              <span className="text-xl font-light text-slate-500 ml-1">{currentTimeSecs.substring(5)}</span>
+              <span className="text-lg lg:text-xl font-light text-slate-500 ml-1">{currentTimeSecs.substring(5)}</span>
             </h2>
-            {/* Motivasyon mesajı */}
-            <p className="text-xs mt-2">
+            <p className="text-xs mt-2 min-h-[16px]">
               <TypewriterText
                 text={motivation.text}
                 baseColor={motivation.color}
@@ -492,10 +531,9 @@ export default function Dashboard() {
               </button>
             )}
           </div>
-          <div className="text-left md:text-right">
-            <div className="flex flex-wrap items-center gap-2 md:justify-end">
-              <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">AKTİF VARDİYA</span>
-              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+          <div className="flex-1 min-w-0 text-left sm:text-right">
+            <div className="flex items-center gap-2 sm:justify-end">
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${
                 mode === 'pay'
                   ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
                   : mode === 'chrono'
@@ -505,11 +543,48 @@ export default function Dashboard() {
                 {mode === 'pay' ? 'PAY MODU' : mode === 'chrono' ? 'KRONO MODU' : 'MYSHIFT MODU'}
               </span>
             </div>
-            <h3 className="text-xl font-medium text-slate-200 mt-1">
-              {mode === 'chrono' ? 'Krono Modu' : activeTemplate ? activeTemplate.name : 'Vardiya Atanmadı'}
+            <div className="flex items-center gap-1 mt-2 sm:justify-end">
+              {(['myshift', 'pay', 'chrono'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => updateSettings({ mode: m })}
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-colors whitespace-nowrap ${
+                    mode === m
+                      ? m === 'pay'
+                        ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                        : m === 'chrono'
+                          ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                          : 'accent-solid-strong border-white/10'
+                      : 'bg-white/5 border-white/10 text-slate-500 hover:text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  {m === 'myshift' ? '⏰ MyShift' : m === 'pay' ? '💰 Pay' : '⏱ Krono'}
+                </button>
+              ))}
+            </div>
+            <h3 className="text-lg font-medium text-slate-200 mt-1.5 truncate">
+              {mode === 'chrono' ? 'Krono Modu' : mode === 'pay' ? 'Pay Vardiyası' : activeTemplate ? activeTemplate.name : 'Vardiya Atanmadı'}
             </h3>
-            {mode !== 'chrono' && activeTemplate && activeTemplate.activities.length > 0 && (
-              <p className="text-xs text-slate-400 mt-0.5">
+            {mode === 'pay' && (
+              <p className="text-xs text-slate-400 mt-0.5 truncate">
+                {durationMode
+                  ? `Hedef: ${settings.payDurationMin} dk • Çalışılan: ${formatRemaining(payWorkSecs)}${payPaused ? ' • ⏸ Duraklatıldı' : ''}${breakSeconds > 0 ? ` • Mola: ${formatRemaining(breakSeconds)}` : ''}`
+                  : `${settings.payShiftStart} - ${settings.payShiftEnd} • ${Object.values(breakUsage).reduce((a, b) => a + (b ?? 0), 0)} dk mola kullanıldı`}
+              </p>
+            )}
+            {mode === 'chrono' && (
+              <p className="text-xs text-slate-400 mt-0.5 truncate">
+                {isChronoWork
+                  ? `Çalışıyor: ${formatRemaining(chronoWorkSecs)}`
+                  : isChronoBreak
+                    ? `Molada: ${formatRemaining(chronoBreakSecs)}`
+                    : chronoWorkSecs > 0 || chronoBreakSecs > 0
+                      ? `Çalışma: ${formatRemaining(chronoWorkSecs)} • Mola: ${formatRemaining(chronoBreakSecs)}`
+                      : 'Kronometre henüz başlatılmadı'}
+              </p>
+            )}
+            {mode !== 'chrono' && mode !== 'pay' && activeTemplate && activeTemplate.activities.length > 0 && (
+              <p className="text-xs text-slate-400 mt-0.5 truncate">
                 {durationMode
                   ? `Toplam ${Math.round(durationTargetSecs / 60)} dk • Çalışılan ${formatRemaining(payWorkSecs)}`
                   : `${activeTemplate.activities.length} Aktivite • ${activeTemplate.activities[0].startTime} - ${activeTemplate.activities[activeTemplate.activities.length - 1].endTime}`}
@@ -519,7 +594,7 @@ export default function Dashboard() {
         </div>
 
         {/* Current Activity / Overtime Box */}
-        <div className="flex-1 fluent-card p-6 flex flex-col justify-between min-h-[300px]">
+        <div className="flex-1 fluent-card p-6 flex flex-col justify-between min-h-0">
           {/* Top Info */}
           <div>
             <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">
@@ -632,8 +707,14 @@ export default function Dashboard() {
               <div className="mt-4 flex items-center gap-4">
                 <div className="text-5xl p-4 rounded-2xl border bg-slate-500/10 border-slate-500/20">🚫</div>
                 <div>
-                  <h1 className="text-2xl font-medium text-slate-300">Bugün İçin Vardiya Yok</h1>
-                  <p className="text-sm text-slate-400 mt-1">Şu an serbestsiniz — bu süre aşım sayılmaz. Vardiya planınızı Vardiya Düzenleyici'den etkinleştirebilirsiniz.</p>
+                  <h1 className="text-2xl font-medium text-slate-300">
+                    {mode === 'pay' ? 'Vardiya Henüz Başlamadı' : 'Bugün İçin Vardiya Yok'}
+                  </h1>
+                  <p className="text-sm text-slate-400 mt-1">
+                    {mode === 'pay'
+                      ? `Vardiya saati ${settings.payShiftStart}'de başlayacak. Şu an serbestsiniz.`
+                      : 'Şu an serbestsiniz — bu süre aşım sayılmaz. Vardiya planınızı Vardiya Düzenleyici\'den etkinleştirebilirsiniz.'}
+                  </p>
                 </div>
               </div>
             ) : overBudgetBreak ? (
@@ -662,66 +743,153 @@ export default function Dashboard() {
               </div>
             ) : currentActivity ? (
               <div className="mt-4">
-                <div className="flex items-start gap-4">
-                  <div className={`text-5xl p-4 rounded-2xl border ${colors?.bg} ${colors?.border} shadow-lg ${colors?.glow}`}>
-                    {currentActivity.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h1 className="text-3xl font-semibold text-white tracking-wide">{currentActivity.name}</h1>
-                    {durationMode ? (
-                      <div className="mt-3 max-w-lg">
-                        <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5">
-                          <p>
-                            <span className="text-xs text-slate-400">Toplam Süre:</span>{' '}
-                            <span className="font-mono font-bold text-slate-200 text-lg">{formatRemaining(durationTargetSecs)}</span>
-                          </p>
-                          <p>
-                            <span className="text-xs text-slate-400">Çalışılan:</span>{' '}
-                            <span className="font-mono font-semibold text-emerald-300 text-lg">{formatRemaining(payWorkSecs)}</span>
-                          </p>
-                          <p>
-                            <span className="text-xs text-slate-400">Kalan:</span>{' '}
-                            <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(Math.max(0, durationTargetSecs - payWorkSecs))}</span>
-                          </p>
-                        </div>
-                        <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5 mt-3">
-                          <div
-                            className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-1000"
-                            style={{ width: `${Math.min(100, (payWorkSecs / Math.max(1, durationTargetSecs)) * 100)}%` }}
-                          />
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-1">
-                          Hedefin %{Math.min(100, Math.round((payWorkSecs / Math.max(1, durationTargetSecs)) * 100))}'i tamamlandı
-                        </p>
-                      </div>
-                    ) : (
+                {mode === 'pay' ? (
+                  /* ── Pay Mode Card ── */
+                  <div className="flex items-start gap-4">
+                    <div className={`text-5xl p-4 rounded-2xl border ${breakRunning ? 'bg-emerald-500/10 border-emerald-500/30' : overBudgetBreak ? 'bg-rose-500/10 border-rose-500/30' : 'bg-emerald-500/10 border-emerald-500/30'} shadow-lg ${breakRunning ? 'shadow-emerald-500/10' : 'shadow-emerald-500/10'}`}>
+                      {breakRunning && !overBudgetBreak ? '☕' : overBudgetBreak ? '⛔' : '💼'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h1 className="text-3xl font-semibold text-white tracking-wide">
+                        {breakRunning && !overBudgetBreak ? 'Moladasın' : overBudgetBreak ? 'Bütçe Dışı Mola' : 'Çalışma Süresi'}
+                      </h1>
                       <p className="text-sm text-slate-400 mt-1">
-                        Saat: <span className="text-slate-200 font-medium">{currentActivity.startTime} - {currentActivity.endTime}</span> ({currentActivity.duration} dk)
+                        {breakRunning && !overBudgetBreak
+                          ? 'Mola bütçenden harcıyor — bitince otomatik devam edecek.'
+                          : overBudgetBreak
+                            ? 'Bu mola bütçeyi aştı, aşım olarak sayılıyor.'
+                            : durationMode
+                              ? 'Hedefine çalıştıkça kalan süre azalıyor.'
+                              : `Vardiya ${settings.payShiftStart} - ${settings.payShiftEnd} arası aktif.`}
                       </p>
-                    )}
-                    {currentActivity.notes && (
-                      <div className="mt-3 p-3 bg-white/5 border border-white/5 rounded-lg max-w-lg">
-                        <p className="text-xs text-slate-300 italic">{currentActivity.notes}</p>
-                      </div>
-                    )}
+                      {durationMode ? (
+                        <div className="mt-3 max-w-lg">
+                          <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5">
+                            <p>
+                              <span className="text-xs text-slate-400">Hedef:</span>{' '}
+                              <span className="font-mono font-bold text-slate-200 text-lg">{formatRemaining(durationTargetSecs)}</span>
+                            </p>
+                            <p>
+                              <span className="text-xs text-slate-400">Çalışılan:</span>{' '}
+                              <span className="font-mono font-semibold text-emerald-300 text-lg">{formatRemaining(payWorkSecs)}</span>
+                            </p>
+                            <p>
+                              <span className="text-xs text-slate-400">Kalan:</span>{' '}
+                              <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(Math.max(0, durationTargetSecs - payWorkSecs))}</span>
+                            </p>
+                          </div>
+                          <div className="h-2.5 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5 mt-3">
+                            <div
+                              className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-1000"
+                              style={{ width: `${Math.min(100, (payWorkSecs / Math.max(1, durationTargetSecs)) * 100)}%` }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Hedefin %{Math.min(100, Math.round((payWorkSecs / Math.max(1, durationTargetSecs)) * 100))}'i tamamlandı
+                          </p>
+                          {!isShiftFinished && !isOvertime && (
+                            <button
+                              onClick={togglePayPause}
+                              className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-all ${
+                                payPaused
+                                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25'
+                                  : 'bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25'
+                              }`}
+                            >
+                              {payPaused ? '▶ Devam Et' : '⏸ Duraklat'}
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="mt-3 max-w-lg">
+                          <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5">
+                            <p>
+                              <span className="text-xs text-slate-400">Başlangıç:</span>{' '}
+                              <span className="font-mono font-bold text-slate-200 text-lg">{settings.payShiftStart}</span>
+                            </p>
+                            <p>
+                              <span className="text-xs text-slate-400">Bitiş:</span>{' '}
+                              <span className="font-mono font-bold text-slate-200 text-lg">{settings.payShiftEnd}</span>
+                            </p>
+                            <p>
+                              <span className="text-xs text-slate-400">Çalışılan:</span>{' '}
+                              <span className="font-mono font-semibold text-emerald-300 text-lg">{formatRemaining(workedSeconds)}</span>
+                            </p>
+                          </div>
+                          {!isOvertime && realSecs < effectiveShiftEndSecs && (
+                            <>
+                              <div className="h-2.5 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5 mt-3">
+                                <div
+                                  className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-1000"
+                                  style={{ width: `${Math.min(100, ((realSecs - effectiveShiftStartSecs) / Math.max(1, effectiveShiftEndSecs - effectiveShiftStartSecs)) * 100)}%` }}
+                                />
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1">
+                                Vardiyanın %{Math.min(100, Math.round(((realSecs - effectiveShiftStartSecs) / Math.max(1, effectiveShiftEndSecs - effectiveShiftStartSecs)) * 100))}'u geçti
+                              </p>
+                            </>
+                          )}
+                          {isOvertime && (
+                            <p className="text-[10px] text-amber-400 mt-2 font-semibold">
+                              ⏰ Vardiya saati doldu — geçen her saniye aşım olarak sayılıyor.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {/* Break budget summary for Pay window mode */}
+                      {!durationMode && (
+                        <div className="mt-3 flex flex-wrap gap-3 text-[11px]">
+                          <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300">
+                            ☕ Kısa Mola: {Object.entries(breakUsage).filter(([k]) => ['cay', 'kahve', 'ihtiyac'].includes(k)).reduce((a, [, v]) => a + (v ?? 0), 0)} / {settings.payShortBreakMin} dk
+                          </span>
+                          <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300">
+                            🍽️ Yemek Molası: {Object.entries(breakUsage).filter(([k]) => ['kahvalti', 'ogle', 'aksam'].includes(k)).reduce((a, [, v]) => a + (v ?? 0), 0)} / {settings.payMealBreakMin} dk
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={handleCompleteCurrentActivity}
-                    className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-emerald-500/20"
-                    title="Bu aktiviteyi bitir, sıradakine geç"
-                  >
-                    ✔ {isCurrentLast ? 'Vardiyayı Tamamla' : 'Aktiviteyi Tamamla / Geç'}
-                  </button>
-                </div>
+                ) : (
+                  /* ── MyShift Mode Card ── */
+                  <>
+                    <div className="flex items-start gap-4">
+                      <div className={`text-5xl p-4 rounded-2xl border ${colors?.bg} ${colors?.border} shadow-lg ${colors?.glow}`}>
+                        {currentActivity.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h1 className="text-3xl font-semibold text-white tracking-wide">{currentActivity.name}</h1>
+                        <p className="text-sm text-slate-400 mt-1">
+                          Saat: <span className="text-slate-200 font-medium">{currentActivity.startTime} - {currentActivity.endTime}</span> ({currentActivity.duration} dk)
+                        </p>
+                        {currentActivity.notes && (
+                          <div className="mt-3 p-3 bg-white/5 border border-white/5 rounded-lg max-w-lg">
+                            <p className="text-xs text-slate-300 italic">{currentActivity.notes}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        onClick={handleCompleteCurrentActivity}
+                        className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-emerald-500/20"
+                        title="Bu aktiviteyi bitir, sıradakine geç"
+                      >
+                        ✔ {isCurrentLast ? 'Vardiyayı Tamamla' : 'Aktiviteyi Tamamla / Geç'}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ) : isBeforeShift ? (
               <div className="mt-4 flex items-center gap-4">
                 <div className="text-5xl p-4 rounded-2xl border bg-slate-500/10 border-slate-500/20">💤</div>
                 <div>
                   <h1 className="text-2xl font-medium text-slate-300">Vardiya Henüz Başlamadı</h1>
-                  <p className="text-sm text-slate-400 mt-1">Günün ilk aktivitesi başlamak üzere bekleniyor.</p>
+                  <p className="text-sm text-slate-400 mt-1">
+                    {mode === 'pay'
+                      ? `Vardiya saati ${settings.payShiftStart}'de başlayacak. Şu an serbestsiniz.`
+                      : 'Günün ilk aktivitesi başlamak üzere bekleniyor.'}
+                  </p>
                 </div>
               </div>
             ) : isShiftFinished ? (
@@ -876,8 +1044,8 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Progress & Remaining Time */}
-          {activeTemplate && activeTemplate.activities.length > 0 && (
+          {/* Progress & Remaining Time — MyShift only */}
+          {mode === 'myshift' && activeTemplate && activeTemplate.activities.length > 0 && (
             <div className="mt-8">
               <div className="flex justify-between items-end mb-2">
                 <div>
@@ -908,8 +1076,8 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Shift Progress + Next Activity */}
-        {activeTemplate && activeTemplate.activities.length > 0 && (
+        {/* Shift Progress + Next Activity — MyShift only */}
+        {mode === 'myshift' && activeTemplate && activeTemplate.activities.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="fluent-card p-6 flex flex-col justify-between">
               <div>
@@ -959,20 +1127,23 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Right Column - Breaks & Today's Timeline */}
-      <div className="flex flex-col gap-6">
+      {/* Right Column - Breaks, Timeline/Widget */}
+      <div className="flex flex-col gap-6 min-h-0">
         {mode === 'pay' && <BreakCard />}
-        <div className="fluent-card p-6 flex flex-col min-h-[450px]">
-          <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block mb-4">BUGÜNÜN ZAMAN ÇİZELGESİ</span>
-          {/* flex-1 min-h-0 flex flex-col so Timeline's own scroll + undone button works */}
-          <div className="flex-1 min-h-0 flex flex-col">
-            <Timeline />
+        {mode === 'myshift' && (
+          <div className="fluent-card p-6 flex flex-col flex-1 min-h-0">
+            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block mb-4">BUGÜNÜN ZAMAN ÇİZELGESİ</span>
+            <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
+              <Timeline />
+            </div>
           </div>
-        </div>
+        )}
+        {mode === 'myshift' && <WeatherWidget />}
+        {(mode === 'pay' || mode === 'chrono') && <WeatherWidget compact />}
       </div>
 
       {/* Bottom Row - Day Summary */}
-      {activeTemplate && sortedActivities.length > 0 && (
+      {(mode !== 'myshift' || (activeTemplate && sortedActivities.length > 0)) && (
         <div className="lg:col-span-3 fluent-card p-6">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">📊 GÜN SONU ÖZETİ</span>

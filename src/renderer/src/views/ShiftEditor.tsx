@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useShiftStore, ShiftTemplate, Activity, calculateDuration } from '../stores/useShiftStore'
 import { playSound } from '../utils/soundEffects'
+import { useT } from '../i18n/useT'
 
 // ─── Quick Presets ─────────────────────────────────────────────────────────────
 const ACTIVITY_PRESETS: Partial<Activity>[] = [
@@ -124,7 +125,7 @@ function ActivityCard({
         <button
           onClick={onDelete}
           className="h-full px-2.5 text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors text-sm"
-          title="Sil"
+          title={t('shiftEditor.delete')}
         >✕</button>
       </div>
     </div>
@@ -143,6 +144,7 @@ function ActivityModal({
   onSave: (act: Activity) => void
   onClose: () => void
 }) {
+  const { t } = useT()
   const [form, setForm] = useState<Activity>(activity)
 
   const applyPreset = (preset: Partial<Activity>) => {
@@ -261,8 +263,8 @@ function ActivityModal({
             <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 rounded-lg border border-white/5">
               <span className="text-slate-500 text-xs">⏱</span>
               <span className="text-xs text-slate-400">
-                Süre: <span className="text-slate-200 font-semibold font-mono">
-                  {calculateDuration(form.startTime, form.endTime)} dakika
+                {t('shiftEditor.duration')}: <span className="text-slate-200 font-semibold font-mono">
+                  {calculateDuration(form.startTime, form.endTime)} {t('shiftEditor.durationMinutes')}
                   {' '}({Math.floor(calculateDuration(form.startTime, form.endTime) / 60) > 0 && `${Math.floor(calculateDuration(form.startTime, form.endTime) / 60)} sa `}{calculateDuration(form.startTime, form.endTime) % 60 > 0 && `${calculateDuration(form.startTime, form.endTime) % 60} dk`})
                 </span>
               </span>
@@ -295,7 +297,7 @@ function ActivityModal({
           {/* Color picker */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-              Renk
+              {t('shiftEditor.color')}
             </label>
             <div className="flex gap-2 flex-wrap">
               {COLOR_OPTIONS.map(col => (
@@ -405,13 +407,13 @@ function ActivityModal({
               onClick={onClose}
               className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-white/5 text-slate-300 rounded-xl text-sm font-medium transition-colors"
             >
-              İptal
+              {t('shiftEditor.cancel')}
             </button>
             <button
               type="submit"
               className="flex-1 py-2.5 accent-solid-strong hover:accent-solid text-white rounded-xl text-sm font-semibold transition-colors shadow-lg accent-glow-lg"
             >
-              {isNew ? 'Aktivite Ekle' : 'Kaydet'}
+              {isNew ? 'Aktivite Ekle' : t('shiftEditor.save')}
             </button>
           </div>
         </form>
@@ -422,6 +424,7 @@ function ActivityModal({
 
 // ─── Main ShiftEditor ──────────────────────────────────────────────────────────
 export default function ShiftEditor() {
+  const { t } = useT()
   const {
     templates,
     saveTemplate,
@@ -604,7 +607,7 @@ export default function ShiftEditor() {
   }
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 h-[calc(100vh-6.5rem)]">
+    <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 h-full">
 
       {/* ── LEFT: Template sidebar ── */}
       <div className="flex flex-col gap-4 overflow-y-auto pr-1">
@@ -672,7 +675,7 @@ export default function ShiftEditor() {
 
             {/* Name */}
             <div>
-              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">Ad</label>
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1">{t('shiftEditor.name')}</label>
               <input
                 type="text"
                 value={selected.name}
@@ -799,7 +802,7 @@ export default function ShiftEditor() {
         <div className="px-5 py-3.5 border-b border-white/5 flex items-center justify-between flex-shrink-0">
           <div>
             <h2 className="text-sm font-semibold text-slate-200">
-              {selected ? selected.name : 'Aktiviteler'}
+              {selected ? selected.name : t('shiftEditor.activities')}
             </h2>
             <p className="text-[11px] text-slate-500 mt-0.5">
               {selected

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useShiftStore } from '../stores/useShiftStore'
 import type { Settings } from '../stores/useShiftStore'
 import { playSound, playReminderSound } from '../utils/soundEffects'
@@ -103,7 +103,7 @@ function Row({ icon, title, description, right }: { icon: string; title: string;
 }
 
 export default function SettingsView() {
-  const { settings, updateSettings, clearHistory } = useShiftStore()
+  const { settings, updateSettings, clearHistory, factoryReset } = useShiftStore()
   const api = window.electronAPI
 
   // Parse birthday state
@@ -131,6 +131,25 @@ export default function SettingsView() {
   const [exportFlash, setExportFlash] = useState('')
   const [importFlash, setImportFlash] = useState('')
   const [importing, setImporting] = useState(false)
+
+  // Factory reset confirmation
+  const [resetDraft, setResetDraft] = useState('')
+  const [resetting, setResetting] = useState(false)
+
+  // Weather widget — geocoding
+  const [geoQuery, setGeoQuery] = useState('')
+  const [geoResults, setGeoResults] = useState<{ name: string; country: string; admin1?: string; lat: number; lon: number }[]>([])
+  const [geoSearching, setGeoSearching] = useState(false)
+
+  // Clean up all flash-timeouts on unmount
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  useEffect(() => {
+    return () => { timersRef.current.forEach(clearTimeout) }
+  }, [])
+  const flashTimer = (fn: () => void, ms: number) => {
+    const id = setTimeout(() => { fn(); timersRef.current = timersRef.current.filter(t => t !== id) }, ms)
+    timersRef.current.push(id)
+  }
 
   const loadOpenRouterModels = useCallback(async () => {
     if (!api?.ai?.getOpenRouterModels) return
@@ -192,7 +211,7 @@ export default function SettingsView() {
   const handleSaveApiKey = () => {
     updateSettings({ commentApiKey: keyDraft.trim() })
     setKeySavedFlash(true)
-    setTimeout(() => setKeySavedFlash(false), 2500)
+    flashTimer(() => setKeySavedFlash(false), 2500)
   }
 
   const handleTestAi = async () => {
@@ -272,6 +291,33 @@ export default function SettingsView() {
                   </button>
                 ))}
               </div>
+            }
+          />
+        </Section>
+
+        {/* Saat Görünümü */}
+        <Section
+          icon="🕐"
+          title="Saat Görünümü"
+          description="Dashboard'daki saat fontunu ve görünümünü özelleştirin."
+        >
+          <Row
+            icon="✏️"
+            title="Saat Fontu"
+            description="Dashboard'daki dijital saatin font stili."
+            right={
+              <select
+                value={settings.clockFont}
+                onChange={(e) => updateSettings({ clockFont: e.target.value })}
+                className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border cursor-pointer"
+              >
+                <option value="jetbrains">JetBrains Mono</option>
+                <option value="fira">Fira Code</option>
+                <option value="inter">Inter</option>
+                <option value="space">Space Grotesk</option>
+                <option value="dm">DM Sans</option>
+                <option value="_outfit">Outfit</option>
+              </select>
             }
           />
         </Section>
@@ -585,9 +631,13 @@ export default function SettingsView() {
                   onChange={(e) => updateSettings({ defaultNotificationSound: e.target.value })}
                   className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border cursor-pointer"
                 >
-                  <option value="default">Varsayılan</option>
-                  <option value="bell">Çan</option>
-                  <option value="digital">Dijital</option>
+                  <option value="default">Varsayılan (Yükselen Üçlü)</option>
+                  <option value="bell">Çan (Yumuşak Tını)</option>
+                  <option value="digital">Dijital (Çift Bıp)</option>
+                  <option value="soft">Yumuşak (İkili Melodi)</option>
+                  <option value="elegant">Zarif (Üçlü Azalan)</option>
+                  <option value="urgent">Acil (Çift Uyarı)</option>
+                  <option value="minimal">Minimal (Tek Tık)</option>
                   <option value="none">Sessiz</option>
                 </select>
                 <button
@@ -890,7 +940,7 @@ export default function SettingsView() {
                   const r = await api.data.export()
                   if (r.ok) {
                     setExportFlash('Dışa aktarıldı')
-                    setTimeout(() => setExportFlash(''), 3000)
+                    flashTimer(() => setExportFlash(''), 3000)
                   }
                 }}
                 className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5"
@@ -916,7 +966,7 @@ export default function SettingsView() {
                     }
                   } finally {
                     setImporting(false)
-                    setTimeout(() => setImportFlash(''), 4000)
+                    flashTimer(() => setImportFlash(''), 4000)
                   }
                 }}
                 disabled={importing}
@@ -931,14 +981,179 @@ export default function SettingsView() {
           </div>
         </Section>
 
-        {/* Veri */}
+        {/* Özel Widget — Hava Durumu */}
         <Section
-          icon="🗑️"
-          title="Veri"
-          description="Geçmiş kayıtları tek tuşla temizle"
+          icon="🌤️"
+          title="Hava Durumu Widget'ı"
+          description="Dashboard'a canlı hava durumu widget'ı ekle"
         >
-          <div className="p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <Row
+            icon="📡"
+            title="Widget Etkin"
+            description="Hava durumu widget'ını dashboard'da göster"
+            right={<Toggle checked={settings.widgetEnabled} onChange={(v) => updateSettings({ widgetEnabled: v })} />}
+          />
+          {settings.widgetEnabled && (
+            <div className="p-4 space-y-4">
+              {/* Quick-select popular cities */}
+              <div>
+                <p className="text-xs font-medium text-slate-400 mb-2">Popüler Şehirler</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { name: 'Kızıltepe', lat: 37.0744, lon: 40.2928, district: 'Mardin' },
+                    { name: 'Istanbul', lat: 41.0082, lon: 28.9784, district: 'İstanbul' },
+                    { name: 'Ankara', lat: 39.9334, lon: 32.8597, district: 'Ankara' },
+                    { name: 'İzmir', lat: 38.4237, lon: 27.1428, district: 'İzmir' },
+                    { name: 'Bursa', lat: 40.1885, lon: 29.061, district: 'Bursa' },
+                    { name: 'Antalya', lat: 36.8969, lon: 30.7133, district: 'Antalya' },
+                    { name: 'Adana', lat: 37.0, lon: 35.3213, district: 'Adana' },
+                    { name: 'Konya', lat: 37.8746, lon: 32.4932, district: 'Konya' },
+                    { name: 'Gaziantep', lat: 37.0662, lon: 37.3833, district: 'Gaziantep' },
+                    { name: 'Trabzon', lat: 41.0027, lon: 39.7168, district: 'Trabzon' },
+                    { name: 'Diyarbakır', lat: 37.9144, lon: 40.2306, district: 'Diyarbakır' },
+                    { name: 'Eskişehir', lat: 39.7767, lon: 30.5206, district: 'Eskişehir' },
+                    { name: 'Samsun', lat: 41.2867, lon: 36.33, district: 'Samsun' },
+                  ].map((city) => (
+                    <button
+                      key={city.name}
+                      onClick={() => {
+                        updateSettings({
+                          widgetCity: city.name,
+                          widgetCountry: 'TR',
+                          widgetDistrict: city.district,
+                          widgetLat: city.lat,
+                          widgetLon: city.lon,
+                        })
+                      }}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all border ${
+                        settings.widgetCity === city.name && settings.widgetLat === city.lat
+                          ? 'bg-accent/20 border-accent/30 accent-text'
+                          : 'bg-white/3 border-white/5 text-slate-400 hover:bg-white/5 hover:text-slate-300'
+                      }`}
+                    >
+                      {city.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom search */}
+              <div>
+                <p className="text-xs font-medium text-slate-400 mb-2">veya Özel Şehir Ara</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={geoQuery}
+                    onChange={(e) => setGeoQuery(e.target.value)}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter' && geoQuery.trim().length >= 2) {
+                        setGeoSearching(true)
+                        try {
+                          const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(geoQuery.trim())}&count=8&language=tr&format=json`)
+                          const data = await res.json()
+                          const mapped = (data.results ?? []).map((r: Record<string, unknown>) => ({
+                            name: r.name as string,
+                            country: r.country as string,
+                            admin1: r.admin1 as string | undefined,
+                            lat: (r.latitude ?? r.lat) as number,
+                            lon: (r.longitude ?? r.lon) as number,
+                          }))
+                          setGeoResults(mapped)
+                        } catch { setGeoResults([]) }
+                        setGeoSearching(false)
+                      }
+                    }}
+                    placeholder="Şehir adı yazın… (Enter)"
+                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 outline-none focus:border-white/20 transition-colors"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (geoQuery.trim().length < 2) return
+                      setGeoSearching(true)
+                      try {
+                        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(geoQuery.trim())}&count=8&language=tr&format=json`)
+                        const data = await res.json()
+                        const mapped = (data.results ?? []).map((r: Record<string, unknown>) => ({
+                          name: r.name as string,
+                          country: r.country as string,
+                          admin1: r.admin1 as string | undefined,
+                          lat: (r.latitude ?? r.lat) as number,
+                          lon: (r.longitude ?? r.lon) as number,
+                        }))
+                        setGeoResults(mapped)
+                      } catch { setGeoResults([]) }
+                      setGeoSearching(false)
+                    }}
+                    className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-400 hover:bg-white/10 transition-colors"
+                  >
+                    {geoSearching ? '⏳' : '🔍'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Search results */}
+              {geoResults.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-slate-500">Sonuçlar — birine tıklayın:</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                    {geoResults.map((r, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          updateSettings({
+                            widgetCity: r.name,
+                            widgetCountry: r.country,
+                            widgetDistrict: r.admin1 ?? '',
+                            widgetLat: r.lat,
+                            widgetLon: r.lon,
+                          })
+                          setGeoResults([])
+                          setGeoQuery('')
+                        }}
+                        className={`text-left px-3 py-2 rounded-lg text-xs transition-all border ${
+                          settings.widgetCity === r.name && settings.widgetLat === r.lat
+                            ? 'bg-accent/20 border-accent/30 accent-text'
+                            : 'bg-white/3 border border-white/5 text-slate-300 hover:bg-white/5 hover:border-white/10'
+                        }`}
+                      >
+                        <span className="font-medium">📍 {r.name}</span>
+                        {r.admin1 && <span className="text-slate-500"> — {r.admin1}</span>}
+                        <span className="text-slate-600"> ({r.country})</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Currently selected */}
+              {settings.widgetCity && (
+                <div className="p-3 rounded-lg bg-accent/5 border border-accent/15">
+                  <p className="text-xs text-slate-300 flex items-center gap-1.5">
+                    📍 <span className="font-semibold">{settings.widgetCity}</span>
+                    {settings.widgetDistrict && <span className="text-slate-400">, {settings.widgetDistrict}</span>}
+                    <span className="text-slate-500"> — {settings.widgetCountry}</span>
+                  </p>
+                  <p className="text-[10px] text-slate-600 mt-1 font-mono">
+                    {settings.widgetLat?.toFixed(4)}°N, {settings.widgetLon?.toFixed(4)}°E
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </Section>
+
+        {/* Tehlikeli Bölge — Geri Döndürülemez Ayarlar */}
+        <div className="border-t border-rose-500/20 pt-6 mt-2">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-rose-500/10 border border-rose-500/20 text-sm">⚠️</span>
+            <div>
+              <h3 className="text-sm font-semibold text-rose-300">Tehlikeli Bölge</h3>
+              <p className="text-[10px] text-rose-400/50">Bu işlemler geri alınamaz — dikkatli kullanın</p>
+            </div>
+          </div>
+          <div className="flex flex-col rounded-xl border border-rose-500/15 bg-rose-500/3">
+            {/* Geçmişi Sil */}
+            <div className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-rose-500/10">
               <div>
                 <p className="text-sm font-medium text-slate-300">Geçmişi Temizle</p>
                 <p className="text-[10px] text-slate-500 mt-0.5">Tüm günlük kayıtlar ve tamamlanan vardiyalar silinir. Bugünün kaydı korunur.</p>
@@ -951,11 +1166,41 @@ export default function SettingsView() {
                 }}
                 className="bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5"
               >
-                🗑️ Temizle
+                Geçmişi Temizle
               </button>
             </div>
+            {/* Fabrika Ayarlarına Dön */}
+            <div className="p-4 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-slate-300">Fabrika Ayarlarına Dön</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Tüm şablonlar, ayarlar, günlük kayıtlar, mola geçmişi ve yapay zeka profili silinir. Uygulama varsayılanlarıyla yeniden başlar.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={resetDraft}
+                  onChange={(e) => setResetDraft(e.target.value)}
+                  placeholder='Onaylamak için "reset" yazın'
+                  className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 outline-none focus:border-rose-500/50 transition-colors"
+                />
+                <button
+                  disabled={resetDraft !== 'reset' || resetting}
+                  onClick={async () => {
+                    setResetting(true)
+                    await factoryReset()
+                  }}
+                  className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                    resetDraft === 'reset' && !resetting
+                      ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30 cursor-pointer'
+                      : 'bg-white/5 border border-white/10 text-slate-600 cursor-not-allowed'
+                  }`}
+                >
+                  {resetting ? 'Sıfırlanıyor…' : 'Sıfırla'}
+                </button>
+              </div>
+            </div>
           </div>
-        </Section>
+        </div>
 
         {/* Footer */}
         <div className="border-t border-white/5 pt-4 text-center">

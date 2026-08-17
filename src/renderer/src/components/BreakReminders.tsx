@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useT } from '../i18n/useT'
 import { useShiftStore } from '../stores/useShiftStore'
 import { timeToSeconds } from '../hooks/useLiveShiftEngine'
 import { playReminderSound } from '../utils/soundEffects'
@@ -30,8 +31,12 @@ export function useBreakReminders() {
       const shiftEndMs = dayStartMs + timeToSeconds(`${settings.payShiftEnd}:00`) * 1000
 
       // ── Work stretch reminder ──
-      if (settings.payWorkReminderMin > 0 && !runningBreak && now >= shiftStartMs && now < shiftEndMs) {
-        const stretchStartMs = Math.max(shiftStartMs, lastBreakEndedAt ?? 0)
+      // In window mode: only fire within the shift window.
+      // In duration mode: fire anytime (user defines work by accumulator, not clock).
+      const inShiftWindow = settings.payTargetMode === 'duration'
+        || (now >= shiftStartMs && now < shiftEndMs)
+      if (settings.payWorkReminderMin > 0 && !runningBreak && inShiftWindow) {
+        const stretchStartMs = lastBreakEndedAt ?? 0
         const workMinutes = (now - stretchStartMs) / 60000
         if (workMinutes >= settings.payWorkReminderMin) {
           const key = `${todayStr}|${stretchStartMs}`
@@ -68,15 +73,22 @@ export function useBreakReminders() {
 export function ReminderBanner() {
   const reminder = useShiftStore((s) => s.reminder)
   const dismissReminder = useShiftStore((s) => s.dismissReminder)
+  const { t } = useT()
   const [closing, setClosing] = useState(false)
+  const closeTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current) }
+  }, [])
 
   useEffect(() => {
     if (!reminder) return
     setClosing(false)
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
     playReminderSound()
     const t = window.setTimeout(() => {
       setClosing(true)
-      window.setTimeout(() => dismissReminder(), 350)
+      closeTimerRef.current = window.setTimeout(() => dismissReminder(), 350)
     }, 60000)
     return () => window.clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,7 +122,11 @@ export function ReminderBanner() {
           </div>
 
           <button
-            onClick={() => { setClosing(true); window.setTimeout(() => dismissReminder(), 300) }}
+            onClick={() => {
+              if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+              setClosing(true)
+              closeTimerRef.current = window.setTimeout(() => dismissReminder(), 300)
+            }}
             className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-sm flex items-center justify-center flex-shrink-0 -mr-1 -mt-1 transition-colors"
             title="Kapat"
           >

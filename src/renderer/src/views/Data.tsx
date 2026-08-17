@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useT } from '../i18n/useT'
 
 // ─── Toplanan Veriler ─────────────────────────────────────────────────────────
 // Management page for the data the app has collected about the user:
@@ -25,6 +26,7 @@ function Section({ icon, title, description, children }: { icon: string; title: 
 }
 
 export default function DataView() {
+  const { t } = useT()
   const api = window.electronAPI
   const [profile, setProfile] = useState<AiProfile>({ notes: [], updatedAt: new Date().toISOString() })
   const [newNote, setNewNote] = useState('')
@@ -59,7 +61,7 @@ export default function DataView() {
   }
 
   const clearNotes = async () => {
-    if (!window.confirm('Profil notlarının tamamı silinsin mi? Bu geri alınamaz.')) return
+    if (!window.confirm(t('data.clearProfileConfirm'))) return
     setProfile(await api!.profile.clear())
   }
 
@@ -70,10 +72,10 @@ export default function DataView() {
       const result = await api!.surveillance.analyze(7)
       setProfile(result)
       setAnalysisMsg(result.notes.length > 0
-        ? `${result.notes.length} yeni gözlem eklendi.`
-        : 'Analiz bitti ama yeni not çıkmadı.')
+        ? t('data.analysisResult', { count: result.notes.length })
+        : t('data.analysisNothing'))
     } catch {
-      setAnalysisMsg('Analiz sırasında bir sorun oluştu.')
+      setAnalysisMsg(t('data.analysisError'))
     } finally {
       setAnalyzing(false)
     }
@@ -83,10 +85,10 @@ export default function DataView() {
     setBusy('export')
     try {
       const r = await api!.data.export()
-      if (r.ok) flash('ok', `Veriler dışa aktarıldı: ${r.file ?? ''}`)
-      else if (r.error !== 'iptal') flash('err', `Dışa aktarılamadı: ${r.error ?? 'bilinmeyen hata'}`)
+      if (r.ok) flash('ok', t('data.exportSuccess', { file: r.file ?? '' }))
+      else if (r.error !== 'iptal') flash('err', t('data.exportFail', { error: r.error ?? t('data.unknownError') }))
     } catch {
-      flash('err', 'Dışa aktarma sırasında bir sorun oluştu.')
+      flash('err', t('data.exportError'))
     } finally {
       setBusy('')
     }
@@ -98,29 +100,29 @@ export default function DataView() {
       const r = await api!.data.import()
       if (r.ok) {
         const parts = []
-        if (r.notes) parts.push(`${r.notes} not`)
-        if (r.files) parts.push(`${r.files} günlük kayıt`)
-        flash('ok', `İçe aktarıldı: ${parts.join(', ') || 'değişiklik yok'}.`)
+        if (r.notes) parts.push(`${r.notes} ${t('data.notes')}`)
+        if (r.files) parts.push(`${r.files} ${t('data.dailyRecords')}`)
+        flash('ok', t('data.importSuccess', { parts: parts.join(', ') || t('data.importNothing') }))
         await refreshProfile()
       } else if (r.error !== 'iptal') {
-        flash('err', `İçe aktarılamadı: ${r.error ?? 'bilinmeyen hata'}`)
+        flash('err', t('data.importFail', { error: r.error ?? t('data.unknownError') }))
       }
     } catch {
-      flash('err', 'İçe aktarma sırasında bir sorun oluştu.')
+      flash('err', t('data.importError'))
     } finally {
       setBusy('')
     }
   }
 
   const clearSurveillance = async () => {
-    if (!window.confirm('Gözlem modunun topladığı TÜM kayıtlar (data/surveillance) silinsin mi? Bu geri alınamaz.')) return
+    if (!window.confirm(t('data.clearSurveillanceConfirm'))) return
     setBusy('clear')
     try {
       const r = await api!.data.clearSurveillance()
-      if (r.ok) flash('ok', 'Tüm gözlem kayıtları silindi.')
-      else flash('err', `Silinemedi: ${r.error ?? 'bilinmeyen hata'}`)
+      if (r.ok) flash('ok', t('data.clearSuccess'))
+      else flash('err', t('data.clearFail', { error: r.error ?? t('data.unknownError') }))
     } catch {
-      flash('err', 'Silme sırasında bir sorun oluştu.')
+      flash('err', t('data.clearError'))
     } finally {
       setBusy('')
     }
@@ -135,8 +137,8 @@ export default function DataView() {
             🛰️
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-slate-100">Toplanan Veriler</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Gözlem modu kayıtları, AI profil notları ve yedekleme.</p>
+            <h2 className="text-xl font-semibold text-slate-100">{t('data.pageTitle')}</h2>
+            <p className="text-xs text-slate-400 mt-0.5">{t('data.pageSubtitle')}</p>
           </div>
         </div>
 
@@ -153,48 +155,48 @@ export default function DataView() {
         {/* Backup / transfer */}
         <Section
           icon="💾"
-          title="Yedekleme ve Taşıma"
-          description="Profil notları + gözlem kayıtlarını tek dosyada dışa/içe aktarın"
+          title={t('data.backupTitle')}
+          description={t('data.backupDesc')}
         >
           <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-white/5">
             <div className="min-w-0">
-              <span className="block text-sm font-medium text-slate-200">Veri Dışa Aktar</span>
-              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">Gözlem kayıtları ve AI notlarını tek bir .json dosyasına kaydeder (yedeklemek veya başka cihaza taşımak için).</p>
+              <span className="block text-sm font-medium text-slate-200">{t('data.exportTitle')}</span>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{t('data.exportDesc')}</p>
             </div>
             <button
               onClick={exportData}
               disabled={busy === 'export'}
               className="accent-solid-strong hover:accent-solid disabled:opacity-50 text-white text-[11px] px-3 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap flex-shrink-0"
             >
-              {busy === 'export' ? 'Aktarılıyor…' : '⬇ Dışa Aktar'}
+              {busy === 'export' ? t('data.exporting') : t('data.exportBtn')}
             </button>
           </div>
 
           <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-white/5">
             <div className="min-w-0">
-              <span className="block text-sm font-medium text-slate-200">Veri İçe Aktar</span>
-              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">Önceden dışa aktarılmış bir dosyayı birleştirir; aynı kayıtlar çift eklenmez.</p>
+              <span className="block text-sm font-medium text-slate-200">{t('data.importTitle')}</span>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{t('data.importDesc')}</p>
             </div>
             <button
               onClick={importData}
               disabled={busy === 'import'}
               className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-[11px] px-3 py-2 rounded-lg border border-white/5 font-semibold transition-colors whitespace-nowrap flex-shrink-0"
             >
-              {busy === 'import' ? 'Aktarılıyor…' : '⬆ İçe Aktar'}
+              {busy === 'import' ? t('data.exporting') : t('data.importBtn')}
             </button>
           </div>
 
           <div className="flex items-center justify-between gap-4 px-4 py-3">
             <div className="min-w-0">
-              <span className="block text-sm font-medium text-slate-200">Gözlem Kayıtlarını Sil</span>
-              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">data/surveillance/ altındaki tüm günlük kayıtları kalıcı olarak siler (profil notlarına dokunmaz).</p>
+              <span className="block text-sm font-medium text-slate-200">{t('data.clearSurveillanceTitle')}</span>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{t('data.clearSurveillanceDesc')}</p>
             </div>
             <button
               onClick={clearSurveillance}
               disabled={busy === 'clear'}
               className="bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-50 text-rose-300 text-[11px] px-3 py-2 rounded-lg border border-rose-500/30 font-semibold transition-colors whitespace-nowrap flex-shrink-0"
             >
-              {busy === 'clear' ? 'Siliniyor…' : '🗑 Tümünü Sil'}
+              {busy === 'clear' ? t('data.clearing') : t('data.clearSurveillanceBtn')}
             </button>
           </div>
         </Section>
@@ -202,8 +204,8 @@ export default function DataView() {
         {/* AI Profile */}
         <Section
           icon="🧠"
-          title="AI Profil Notları"
-          description="Analiz sonucu biriken profil notları; yorum yazarken kullanılır"
+          title={t('data.aiProfileTitle')}
+          description={t('data.aiProfileDesc')}
         >
           <div className="px-4 py-3 border-b border-white/5">
             <div className="flex items-center gap-2">
@@ -212,26 +214,25 @@ export default function DataView() {
                 disabled={analyzing}
                 className="accent-solid-strong hover:accent-solid disabled:opacity-50 text-white text-[11px] px-3 py-1.5 rounded-lg font-semibold transition-colors"
               >
-                {analyzing ? 'Analiz Ediliyor…' : '🔎 Son 7 Günü Analiz Et'}
+                {analyzing ? t('data.analyzing') : `🔎 ${t('data.analyzeBtn')}`}
               </button>
               {profile.notes.length > 0 && (
                 <button
                   onClick={clearNotes}
                   className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] px-3 py-1.5 rounded-lg border border-white/5 font-semibold transition-colors"
                 >
-                  🗑 Notları Sil
+                  {t('data.clearNotes')}
                 </button>
               )}
             </div>
             {analysisMsg && <p className="text-[11px] text-slate-400 mt-2">{analysisMsg}</p>}
-            {analyzing && <p className="text-[10px] text-slate-500 mt-1.5">Gözlem verisi, Ayarlar'daki yorum kaynağına özet olarak gönderiliyor (veya çevrimdışı özetleniyor)…</p>}
+            {analyzing && <p className="text-[10px] text-slate-500 mt-1.5">{t('data.analysisLoading')}</p>}
           </div>
 
           <div className="flex flex-col">
             {profile.notes.length === 0 ? (
               <p className="px-4 py-4 text-[11px] text-slate-500">
-                Henüz not yok. Önce Gözlem Modu'nda bir süre kayıt toplayın, sonra "Son 7 Günü Analiz Et" ile
-                otomatik gözlemler üretin — ya da aşağıdan elle ekleyin.
+                {t('data.noNotes')}
               </p>
             ) : (
               profile.notes.map((note, i) => (
@@ -240,7 +241,7 @@ export default function DataView() {
                   <button
                     onClick={() => removeNote(i)}
                     className="text-slate-600 hover:text-red-400 transition-colors text-xs flex-shrink-0 mt-0.5"
-                    title="Notu sil"
+                    title={t('data.deleteNote')}
                   >
                     ✕
                   </button>
@@ -255,7 +256,7 @@ export default function DataView() {
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') addNote() }}
-              placeholder="Manuel gözlem ekle (örn: gece geç saatlerde odaklanıyor)…"
+              placeholder={t('data.notePlaceholder')}
               maxLength={160}
               className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:accent-border placeholder:text-slate-600"
             />
@@ -264,14 +265,14 @@ export default function DataView() {
               disabled={!newNote.trim()}
               className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 text-[11px] px-3 py-2 rounded-lg border border-white/5 font-semibold transition-colors"
             >
-              Ekle
+              {t('data.addNote')}
             </button>
           </div>
         </Section>
 
         {/* Footer */}
         <div className="border-t border-white/5 pt-4 text-center">
-          <span className="text-[10px] text-slate-600 block">Tüm veriler bu cihazda — data/ klasöründe düz metin olarak. İstediğiniz an silebilirsiniz.</span>
+          <span className="text-[10px] text-slate-600 block">{t('data.allDataFooter')}</span>
         </div>
       </div>
     </div>

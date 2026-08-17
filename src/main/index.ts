@@ -45,34 +45,30 @@ function registerAppUserModelId(): void {
 }
 
 function createTray(): void {
-  // Use a default system icon or fallback for tray icon (we'll provide a real icon path later)
-  // For development, we'll try to find a system icon or use a dummy image.
-  // In a packaged app, we should use a proper .ico file.
   const iconPath = join(__dirname, '../../resources/icon.png')
   
   try {
     tray = new Tray(iconPath)
   } catch (error) {
-    // If the icon is missing during bootstrap, create a dummy or try/catch fallback
     console.error('Failed to load tray icon:', error)
-    // We will initialize the tray anyway when the file is available
     return
   }
 
   const contextMenu = Menu.buildFromTemplate([
     { 
       id: 'status',
-      label: 'MyShift',
+      label: 'MyShift — Vardiya Yönetim Sistemi',
       enabled: false
     },
     { type: 'separator' },
     { 
-      label: 'Göster', 
+      label: 'Pencereyi Göster', 
       click: () => {
         mainWindow?.show()
         mainWindow?.focus()
       } 
     },
+    { type: 'separator' },
     { 
       label: 'Vardiyayı Tamamla', 
       click: () => {
@@ -85,9 +81,15 @@ function createTray(): void {
         mainWindow?.webContents.send('tray-action', 'reset-idle')
       } 
     },
+    { 
+      label: 'Molaları Sıfırla', 
+      click: () => {
+        mainWindow?.webContents.send('tray-action', 'reset-breaks')
+      } 
+    },
     { type: 'separator' },
     { 
-      label: 'Quit', 
+      label: 'Çıkış', 
       click: () => {
         isQuitting = true
         app.quit()
@@ -96,7 +98,7 @@ function createTray(): void {
   ])
 
   trayMenu = contextMenu
-  tray.setToolTip('MyShift - Personal Shift Management')
+  tray.setToolTip('MyShift — Vardiya Yönetim Sistemi')
   tray.setContextMenu(contextMenu)
 
   tray.on('double-click', () => {
@@ -225,7 +227,7 @@ if (!gotTheLock) {
         responseHeaders: {
           ...details.responseHeaders,
           'Content-Security-Policy': [
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws:"
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ws: https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.openai.com https://openrouter.ai http://127.0.0.1:11434"
           ]
         }
       })
@@ -340,7 +342,7 @@ let surveillanceRecording = false
 function applyTrayLabel(): void {
   if (!tray) return
   const obs = surveillanceRecording ? '👁️ Gözlem modu aktif' : ''
-  const label = (obs ? `${obs} • ` : '') + (lastTrayLabel || 'MyShift - Personal Shift Management')
+  const label = (obs ? `${obs} • ` : '') + (lastTrayLabel || 'MyShift — Vardiya Yönetim Sistemi')
   const final = label.slice(0, 120)
   tray.setToolTip(final)
   if (trayMenu) {
@@ -611,6 +613,22 @@ ipcMain.handle('data:clear-surveillance', async (): Promise<{ ok: boolean; error
   }
 })
 
+// 11. Full factory reset — wipe every store key + surveillance data, then reload.
+ipcMain.handle('data:clearAll', async (): Promise<{ ok: boolean; error?: string }> => {
+  try {
+    store.clear()
+    // Also wipe surveillance files
+    let names: string[] = []
+    try { names = readdirSync(surveillanceDir()).filter(n => n.endsWith('.jsonl') || n.endsWith('.json')) } catch { /* none */ }
+    for (const name of names) rmSync(join(surveillanceDir(), name), { force: true })
+    // Wipe AI profile
+    try { rmSync(join(dataDir(), 'aiProfile.json'), { force: true }) } catch { /* ok */ }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+})
+
 // Cleanup on quit
 app.on('will-quit', () => {
   if (stopAppTracker) {
@@ -622,4 +640,9 @@ app.on('will-quit', () => {
     stopSurveillance()
     stopSurveillance = null
   }
+})
+
+// Flush renderer state (live timers) before quitting so nothing is lost
+app.on('before-quit', () => {
+  mainWindow?.webContents.send('flush-state')
 })

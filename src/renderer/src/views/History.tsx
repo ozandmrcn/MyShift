@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useShiftStore } from '../stores/useShiftStore'
 import { formatRemaining } from '../hooks/useLiveShiftEngine'
+import { useT } from '../i18n/useT'
 
 const MONTH_NAMES = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
@@ -16,6 +17,7 @@ function formatDate(dateStr: string): string {
 }
 
 export default function History() {
+  const { t } = useT()
   const { dailyLogs, updateDayLog, deleteDayLog } = useShiftStore()
 
   // Inline editing state: which date is being edited + draft minutes
@@ -41,7 +43,7 @@ export default function History() {
   }
 
   const removeDay = (date: string) => {
-    if (!window.confirm(`${date} gününün kaydı silinsin mi? Bu geri alınamaz.`)) return
+    if (!window.confirm(t('history.deleteConfirm', { date }))) return
     deleteDayLog(date)
     if (editingDate === date) setEditingDate(null)
   }
@@ -71,11 +73,11 @@ export default function History() {
   )
 
   const tiles = [
-    { key: 'worked', label: 'Çalışılan Süre', value: formatRemaining(weekTotals.worked), icon: '💪', accent: false },
-    { key: 'idle', label: 'Toplam Aşım', value: formatRemaining(weekTotals.idle), icon: '📈', accent: weekTotals.idle > 0 },
-    { key: 'payback', label: 'Geri Ödenen', value: formatRemaining(weekTotals.payback), icon: '🔄', accent: false },
-    { key: 'breaks', label: 'Mola', value: formatRemaining(weekTotals.breaks), icon: '🧘', accent: false },
-    { key: 'done', label: 'Tamamlanan Gün', value: `${weekTotals.completed}`, icon: '🎉', accent: false }
+    { key: 'worked', label: t('history.worked'), value: formatRemaining(weekTotals.worked), icon: '💪', accent: false },
+    { key: 'idle', label: t('history.overtimeTotal'), value: formatRemaining(weekTotals.idle), icon: '📈', accent: weekTotals.idle > 0 },
+    { key: 'payback', label: t('history.payback'), value: formatRemaining(weekTotals.payback), icon: '🔄', accent: false },
+    { key: 'breaks', label: t('history.breaks'), value: formatRemaining(weekTotals.breaks), icon: '🧘', accent: false },
+    { key: 'done', label: t('history.completedDays'), value: `${weekTotals.completed}`, icon: '🎉', accent: false }
   ]
 
   // Last 7 days bar chart data
@@ -97,25 +99,25 @@ export default function History() {
   const maxWorked = Math.max(...chartDays.map(d => d.worked), 3600) // min 1h for scale
 
   return (
-    <div className="grid grid-cols-1 gap-6 h-[calc(100vh-6.5rem)] overflow-y-auto pr-1">
+    <div className="grid grid-cols-1 gap-6 h-full overflow-y-auto pr-1">
 
       {/* Weekly Summary Tiles */}
       <div className="fluent-card p-6">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div>
-            <h2 className="text-xl font-semibold text-slate-200">Gün Geçmişi & İstatistik</h2>
-            <p className="text-xs text-slate-400 mt-1">Uygulama açıkken kaydedilen günlük özetler — son 7 günün toplamları.</p>
+            <h2 className="text-xl font-semibold text-slate-200">{t('history.title')}</h2>
+            <p className="text-xs text-slate-400 mt-1">{t('history.subtitle')}</p>
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {tiles.map(t => (
-            <div key={t.key} className="rounded-xl border border-white/5 bg-white/2 p-4">
+          {tiles.map(tile => (
+            <div key={tile.key} className="rounded-xl border border-white/5 bg-white/2 p-4">
               <p className="text-[10px] text-slate-500 flex items-center gap-1.5">
-                <span>{t.icon}</span>
-                {t.label}
+                <span>{tile.icon}</span>
+                {tile.label}
               </p>
-              <p className={`text-2xl font-semibold mt-1.5 font-mono ${t.accent ? 'text-rose-400' : 'text-slate-100'}`}>
-                {t.value}
+              <p className={`text-2xl font-semibold mt-1.5 font-mono ${tile.accent ? 'text-rose-400' : 'text-slate-100'}`}>
+                {tile.value}
               </p>
             </div>
           ))}
@@ -126,8 +128,8 @@ export default function History() {
       {chartDays.some(d => d.worked > 0) && (
         <div className="fluent-card p-6">
           <div className="flex items-center justify-between mb-5">
-            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">📊 SON 7 GÜN — ÇALIŞMA SÜRESİ</span>
-            <span className="text-[10px] text-slate-600">{Math.floor(maxWorked / 3600)}sa maks.</span>
+            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">{t('history.last7Days')}</span>
+            <span className="text-[10px] text-slate-600">{Math.floor(maxWorked / 3600)}{t('history.maxHours')}</span>
           </div>
 
           <div className="flex items-end gap-3 h-36">
@@ -148,10 +150,10 @@ export default function History() {
                           <>
                             <p>💪 {formatRemaining(day.worked)}</p>
                             {day.idle > 0 && <p className="text-amber-400">📈 {formatRemaining(day.idle)}</p>}
-                            {day.completed && <p className="text-emerald-400">✔ Tamamlandı</p>}
+                            {day.completed && <p className="text-emerald-400">{t('history.completedBadge')}</p>}
                           </>
                         ) : (
-                          <p className="text-slate-500">Veri yok</p>
+                          <p className="text-slate-500">{t('history.noData')}</p>
                         )}
                       </div>
                     </div>
@@ -199,15 +201,15 @@ export default function History() {
           <div className="flex items-center gap-4 mt-4 justify-end">
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded-sm accent-grad-t-dull" />
-              <span className="text-[10px] text-slate-500">Çalışılan</span>
+              <span className="text-[10px] text-slate-500">{t('history.workedBar')}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded-sm bg-gradient-to-t from-emerald-600 to-emerald-500" />
-              <span className="text-[10px] text-slate-500">Tamamlandı</span>
+              <span className="text-[10px] text-slate-500">{t('history.completedBar')}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded-sm bg-rose-500/40" />
-              <span className="text-[10px] text-slate-500">Aşım</span>
+              <span className="text-[10px] text-slate-500">{t('history.overtimeBar')}</span>
             </div>
           </div>
         </div>
@@ -216,14 +218,14 @@ export default function History() {
       {/* Full Log List */}
       <div className="fluent-card p-6">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">SON 30 GÜN</span>
-          <span className="text-[11px] text-slate-500">{entries.length} kayıt</span>
+          <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">{t('history.last30Days')}</span>
+          <span className="text-[11px] text-slate-500">{entries.length} {t('history.records')}</span>
         </div>
 
         {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-600 gap-3">
             <span className="text-5xl">🗓️</span>
-            <p className="text-sm">Henüz kayıt yok. Uygulama çalışırken her günün özeti otomatik toplanır.</p>
+            <p className="text-sm">{t('history.noRecords')}</p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -237,14 +239,14 @@ export default function History() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-200 truncate">{formatDate(e.date)}</p>
                   {e.date === todayStr && (
-                    <p className="text-[10px] accent-text">Bugün</p>
+                    <p className="text-[10px] accent-text">{t('history.today')}</p>
                   )}
                 </div>
 
                 {editingDate === e.date ? (
                   <div className="flex items-center gap-2.5 flex-wrap justify-end">
                     <div>
-                      <p className="text-[9px] text-slate-500 uppercase tracking-wider text-center">Çalışma (dk)</p>
+                      <p className="text-[9px] text-slate-500 uppercase tracking-wider text-center">{t('history.workMin')}</p>
                       <input
                         type="number"
                         min={0}
@@ -254,7 +256,7 @@ export default function History() {
                       />
                     </div>
                     <div>
-                      <p className="text-[9px] text-slate-500 uppercase tracking-wider text-center">Aşım (dk)</p>
+                      <p className="text-[9px] text-slate-500 uppercase tracking-wider text-center">{t('history.overMin')}</p>
                       <input
                         type="number"
                         min={0}
@@ -264,7 +266,7 @@ export default function History() {
                       />
                     </div>
                     <div>
-                      <p className="text-[9px] text-slate-500 uppercase tracking-wider text-center">Ödenen (dk)</p>
+                      <p className="text-[9px] text-slate-500 uppercase tracking-wider text-center">{t('history.paidMin')}</p>
                       <input
                         type="number"
                         min={0}
@@ -278,13 +280,13 @@ export default function History() {
                         onClick={() => saveEdit(e.date)}
                         className="accent-solid-strong hover:accent-solid text-white text-[10px] px-2.5 py-1 rounded-lg font-semibold transition-colors"
                       >
-                        ✓ Kaydet
+                        {t('history.save')}
                       </button>
                       <button
                         onClick={() => setEditingDate(null)}
                         className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] px-2.5 py-1 rounded-lg border border-white/5 transition-colors"
                       >
-                        İptal
+                        {t('history.cancel')}
                       </button>
                     </div>
                   </div>
@@ -292,19 +294,19 @@ export default function History() {
                   <>
                     <div className="flex items-center gap-4 text-right">
                       <div>
-                        <p className="text-[9px] text-slate-500 uppercase tracking-wider">Çalışılan</p>
+                        <p className="text-[9px] text-slate-500 uppercase tracking-wider">{t('history.workedLabel')}</p>
                         <p className="text-sm font-semibold font-mono text-slate-200">{formatRemaining(e.workedSeconds)}</p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-500 uppercase tracking-wider">Aşım</p>
+                        <p className="text-[9px] text-slate-500 uppercase tracking-wider">{t('history.overtimeLabel')}</p>
                         <p className={`text-sm font-semibold font-mono ${e.idleSeconds > 0 ? 'text-rose-400' : 'text-slate-500'}`}>{formatRemaining(e.idleSeconds)}</p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-500 uppercase tracking-wider">Ödenen</p>
+                        <p className="text-[9px] text-slate-500 uppercase tracking-wider">{t('history.paybackLabel')}</p>
                         <p className="text-sm font-semibold font-mono text-emerald-300">{formatRemaining(e.paybackSeconds)}</p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-500 uppercase tracking-wider">Mola</p>
+                        <p className="text-[9px] text-slate-500 uppercase tracking-wider">{t('history.breakLabel')}</p>
                         <p className="text-sm font-semibold font-mono text-orange-300">
                           {formatRemaining(e.breakSeconds ?? 0)}
                           {(e.breakCount ?? 0) > 0 && <span className="text-[9px] text-slate-500 ml-1">×{e.breakCount ?? 0}</span>}
@@ -317,21 +319,21 @@ export default function History() {
                             : 'bg-slate-800 border-white/5 text-slate-500'
                         }`}
                       >
-                        {e.completed ? '✔ Tamamlandı' : 'Açık'}
+                        {e.completed ? t('history.completedBadge') : t('history.openBadge')}
                       </span>
                     </div>
                     <div className="flex flex-col gap-1 flex-shrink-0">
                       <button
                         onClick={() => startEdit(e)}
                         className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] px-2.5 py-1 rounded-lg border border-white/5 transition-colors"
-                        title="Günü düzenle"
+                        title={t('history.editDay')}
                       >
-                        ✏️ Düzenle
+                        ✏️ {t('history.edit')}
                       </button>
                       <button
                         onClick={() => removeDay(e.date)}
                         className="bg-slate-800/60 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 text-[10px] px-2.5 py-1 rounded-lg border border-white/5 transition-colors"
-                        title="Günü sil"
+                        title={t('history.deleteDay')}
                       >
                         🗑
                       </button>

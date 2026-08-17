@@ -85,6 +85,21 @@ export interface Settings {
   // Chrono mode — manual chronograph timers.
   chronoWorkReminderMin: number // 0=kapalı — bu kadar dk aralıksız çalışınca mola hatırlatır
   chronoBreakReminderMin: number // 0=kapalı — mola bu kadar dk sürünce "molayı aştın" uyarısı
+
+  // Özel Widget — hava durumu
+  widgetEnabled: boolean
+  widgetType: 'weather'
+  widgetCity: string       // açık şehir adı, ör. "Istanbul"
+  widgetCountry: string    // ISO-3166-1 alpha-2, ör. "TR"
+  widgetDistrict: string   // ilçe/il, ör. "Kadıköy" (opsiyonel)
+  widgetLat: number | null
+  widgetLon: number | null
+
+  // Saat fontu
+  clockFont: string
+
+  // UI Language
+  language: 'en' | 'tr'
 }
 
 export interface DayLog {
@@ -159,6 +174,7 @@ interface ShiftStore {
   payWorkAccumMs: number
   payWorkStartTs: number | null
   payWorkDay: string
+  payPaused: boolean
 
   // Chrono mode — manual chronograph state.
   // The user manually starts/stops work and break sessions via dashboard buttons.
@@ -214,6 +230,7 @@ interface ShiftStore {
   stopPayback: () => void
   finishPayback: () => void
   updatePayWork: (isWorkingNow: boolean) => void
+  togglePayPause: () => void
   resetToday: () => void
   startBreak: (type: BreakType, subtype: BreakSubtype, overBudget: boolean) => void
   stopBreak: () => void
@@ -228,6 +245,8 @@ interface ShiftStore {
   updateDayLog: (dateStr: string, log: Partial<DayLog>) => void
   deleteDayLog: (dateStr: string) => void
   updateAppUsage: (snapshot: AppUsageSnapshot) => void
+  factoryReset: () => Promise<void>
+  flushState: () => void
 }
 
 const defaultSettings: Settings = {
@@ -252,7 +271,16 @@ const defaultSettings: Settings = {
   payWorkReminderMin: 50,
   payBreakReminderMin: 15,
   chronoWorkReminderMin: 50,
-  chronoBreakReminderMin: 15
+  chronoBreakReminderMin: 15,
+  widgetEnabled: false,
+  widgetType: 'weather' as const,
+  widgetCity: '',
+  widgetCountry: 'TR',
+  widgetDistrict: '',
+  widgetLat: null,
+  widgetLon: null,
+  clockFont: 'jetbrains',
+  language: 'en',
 }
 
 // Helper to calculate duration in minutes between HH:mm and HH:mm
@@ -284,6 +312,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       payWorkAccumMs: s.payWorkAccumMs,
       payWorkStartTs: s.payWorkStartTs,
       payWorkDay: s.payWorkDay,
+      payPaused: s.payPaused,
       chronoMode: s.chronoMode,
       chronoStartedAt: s.chronoStartedAt,
       chronoWorkAccumMs: s.chronoWorkAccumMs,
@@ -348,6 +377,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   payWorkAccumMs: 0,
   payWorkStartTs: null,
   payWorkDay: '',
+  payPaused: false,
   chronoMode: 'idle' as const,
   chronoStartedAt: null,
   chronoWorkAccumMs: 0,
@@ -407,6 +437,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           payWorkAccumMs?: number
           payWorkStartTs?: number | null
           payWorkDay?: string
+          payPaused?: boolean
           idleDay?: string
           chronoMode?: 'idle' | 'work' | 'break'
           chronoStartedAt?: number | null
@@ -451,7 +482,9 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           completedShifts: prunedCompleted,
           dailyLogs: prunedDayLogs,
           idleAccumMs: sameDay ? savedIdle.idleAccumMs ?? 0 : 0,
-          idleStartTs: sameDay ? savedIdle.idleStartTs ?? null : null,
+          // Never restore live idleStartTs — the engine re-detects idle state
+          // on its own. Restoring it caused "Aşımda" flash on every startup.
+          idleStartTs: null,
           idleDay: todayStr,
           idleLogMs: sameDay ? savedIdle.idleLogMs ?? 0 : 0,
           paybackAccumMs: sameDay ? savedIdle.paybackAccumMs ?? 0 : 0,
@@ -459,6 +492,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           payWorkAccumMs: sameDay ? savedIdle.payWorkAccumMs ?? 0 : 0,
           payWorkStartTs: sameDay ? savedIdle.payWorkStartTs ?? null : null,
           payWorkDay: todayStr,
+          payPaused: sameDay ? savedIdle.payPaused ?? false : false,
           chronoMode: sameDay ? savedIdle.chronoMode ?? 'idle' : 'idle',
           chronoStartedAt: sameDay ? savedIdle.chronoStartedAt ?? null : null,
           chronoWorkAccumMs: sameDay ? savedIdle.chronoWorkAccumMs ?? 0 : 0,
@@ -506,6 +540,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           payWorkAccumMs: bSameDay ? idleParsed.payWorkAccumMs ?? 0 : 0,
           payWorkStartTs: bSameDay ? idleParsed.payWorkStartTs ?? null : null,
           payWorkDay: bToday,
+          payPaused: bSameDay ? idleParsed.payPaused ?? false : false,
           chronoMode: bSameDay ? idleParsed.chronoMode ?? 'idle' : 'idle',
           chronoStartedAt: bSameDay ? idleParsed.chronoStartedAt ?? null : null,
           chronoWorkAccumMs: bSameDay ? idleParsed.chronoWorkAccumMs ?? 0 : 0,
@@ -682,7 +717,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     const target = templates.find(t => t.id === templateId)
     if (!target) return
 
-    // 2026 Turkey Public Holidays
+    // 2026 Turkey Public Holidays (Ramazan/Kurban dates are approximate — update yearly)
     const holidays = [
       '2026-01-01', // Yılbaşı
       '2026-03-19', '2026-03-20', '2026-03-21', '2026-03-22', // Ramazan Bayramı Arefesi & Bayramı
@@ -862,6 +897,27 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     }
   },
 
+  togglePayPause: () => {
+    const { payPaused, payWorkAccumMs, payWorkStartTs, payWorkDay } = get()
+    const now = Date.now()
+    const d = new Date()
+    const day = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+
+    if (!payPaused) {
+      // Pausing: close any active work session
+      let accum = payWorkAccumMs
+      if (payWorkStartTs !== null) {
+        accum += Math.max(0, now - payWorkStartTs)
+      }
+      set({ payPaused: true, payWorkAccumMs: accum, payWorkStartTs: null, payWorkDay: day })
+    } else {
+      // Resuming: start a new work session if within same day
+      const startTs = payWorkDay === day ? now : now
+      set({ payPaused: false, payWorkStartTs: startTs, payWorkDay: day })
+    }
+    persistIdle()
+  },
+
   startPayback: () => {
     const now = Date.now()
     const { paybackStartTs, idleAccumMs, idleLogMs, idleStartTs } = get()
@@ -978,7 +1034,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   },
 
   resetBreaks: () => {
-    set({ breakUsage: {}, breakCount: 0, breakLog: [] })
+    set({ breakUsage: {}, breakCount: 0, breakLog: [], lastBreakEndedAt: null })
     persistBreak()
     persistToday()
   },
@@ -998,6 +1054,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       payWorkAccumMs: 0,
       payWorkStartTs: null,
       payWorkDay: day,
+      payPaused: false,
       idleLog: [],
       paybackLog: [],
       breakLog: [],
@@ -1021,7 +1078,11 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     // Start today's DayLog fresh. Do NOT un-complete the day — clearing today's
     // counters should not re-open the shift and trigger aşım.
     const freshLog: DayLog = { workedSeconds: 0, idleSeconds: 0, paybackSeconds: 0, breakSeconds: 0, breakCount: 0, completed: false }
-    set({ dailyLogs: { ...get().dailyLogs, [day]: freshLog } })
+    const newLogs = { ...get().dailyLogs, [day]: freshLog }
+    set({ dailyLogs: newLogs })
+    const api = window.electronAPI
+    if (api?.store) api.store.set('dailyLogs', newLogs)
+    else localStorage.setItem('dailyLogs', JSON.stringify(newLogs))
   },
 
   showReminder: (kind, message) => {
@@ -1094,6 +1155,24 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     set({ appUsage: snapshot })
   },
 
+  factoryReset: async () => {
+    const api = window.electronAPI
+    if (api?.data?.clearAll) {
+      await api.data.clearAll()
+    } else {
+      localStorage.clear()
+    }
+    // Reload the entire app so every component starts fresh
+    window.location.reload()
+  },
+
+  // Called on before-quit to flush all live timers to disk
+  flushState: () => {
+    persistIdle()
+    persistBreak()
+    persistToday()
+  },
+
   chronoStartWork: () => {
     const s = get()
     const now = new Date()
@@ -1163,8 +1242,12 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
 // When the main process finishes a full data import, reload everything so the
 // renderer reflects the freshly restored templates, settings, logs, etc.
 if (typeof window !== 'undefined') {
-  const api = (window as any).electronAPI
+  const api = window.electronAPI
   api?.data?.onImported?.(() => {
     useShiftStore.getState().loadFromStore()
+  })
+  // Flush all live timers when the app is about to quit
+  api?.onFlushState?.(() => {
+    useShiftStore.getState().flushState()
   })
 }

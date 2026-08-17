@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useT } from '../i18n/useT'
 
 // ─── Gözlem Modu ──────────────────────────────────────────────────────────────
 // Pure data-collection mode. Shift tracking is irrelevant here — the app exists
@@ -31,6 +32,7 @@ function fmtDate(iso: string): string {
 }
 
 export default function ObserveView() {
+  const { t } = useT()
   const api = window.electronAPI
   const [status, setStatus] = useState<SurveillanceSnapshot | null>(null)
   const [now, setNow] = useState(Date.now())
@@ -45,8 +47,8 @@ export default function ObserveView() {
   // presses the button explicitly (the mode exists to collect data on demand).
   useEffect(() => {
     refresh()
-    const t = setInterval(() => { refresh(); setNow(Date.now()) }, 3000)
-    return () => clearInterval(t)
+    const interval = setInterval(() => { refresh(); setNow(Date.now()) }, 3000)
+    return () => clearInterval(interval)
   }, [refresh])
 
   const toggle = async () => {
@@ -77,8 +79,8 @@ export default function ObserveView() {
             👁️
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-semibold text-slate-100">Gözlem Modu</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Saf veri toplama — vardiya takibini boş verir, sadece sizi tanır.</p>
+            <h2 className="text-xl font-semibold text-slate-100">{t('observe.title')}</h2>
+            <p className="text-xs text-slate-400 mt-0.5">{t('observe.subtitle')}</p>
           </div>
           <button
             onClick={toggle}
@@ -89,26 +91,26 @@ export default function ObserveView() {
             }`}
           >
             <span className={`w-2 h-2 rounded-full ${recording ? 'bg-rose-400 animate-pulse' : 'bg-emerald-400'}`} />
-            {recording ? '■ KAYDI DURDUR' : '▶ KAYDETMEYE BAŞLA'}
+            {recording ? t('observe.stopRecording') : t('observe.startRecording')}
           </button>
         </div>
 
         {/* Live current activity */}
         <div className="fluent-card p-5">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">ŞU AN</span>
+            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">{t('observe.currentLabel')}</span>
             <span className="font-mono text-[11px] text-slate-500">{fmtClock(now)}</span>
           </div>
 
           {!recording ? (
             <div className="flex flex-col items-center justify-center py-8 text-slate-600 gap-3">
               <span className="text-4xl">😴</span>
-              <p className="text-sm">Kayıt kapalı — bu modda arka plan vardiyası da duraklar. Başlatmak için üstteki butona basın.</p>
+              <p className="text-sm">{t('observe.recordingOff')}</p>
             </div>
           ) : !current ? (
             <div className="flex flex-col items-center justify-center py-8 text-slate-600 gap-3">
               <span className="text-4xl animate-pulse">🔍</span>
-              <p className="text-sm">İlk kayıt bekleniyor…</p>
+              <p className="text-sm">{t('observe.waitingForFirst')}</p>
             </div>
           ) : (
             <div className="flex flex-col gap-3">
@@ -123,18 +125,17 @@ export default function ObserveView() {
                   )}
                   {current.typed && (
                     <p className="text-[11px] text-amber-300/80 truncate mt-1">
-                      <span className="text-slate-500">⌨️ son yazılan:</span> “{current.typed.slice(0, 120)}{current.typed.length > 120 ? '…' : ''}”
+                      <span className="text-slate-500">{t('observe.lastTyped')}</span> “{current.typed.slice(0, 120)}{current.typed.length > 120 ? '…' : ''}”
                     </p>
                   )}
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <p className="text-[9px] text-slate-500 uppercase tracking-wider">Başlangıç</p>
+                  <p className="text-[9px] text-slate-500 uppercase tracking-wider">{t('observe.windowStart')}</p>
                   <p className="font-mono text-sm text-slate-300">{fmtClock(current.t)}</p>
                 </div>
               </div>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                Pencere başlığı (dosya, sekme, açık belge) ve bu pencerede yazdıklarınız kaydediliyor —
-                hepsi cihazınızda, size özel.
+                {t('observe.windowDesc')}
               </p>
             </div>
           )}
@@ -143,12 +144,12 @@ export default function ObserveView() {
         {/* Live feed */}
         <div className="fluent-card p-5">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">📜 AKIŞ — SON KAYITLAR</span>
-            <span className="text-[10px] text-slate-600">{feed.length} kayıt</span>
+            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">{t('observe.feedTitle')}</span>
+            <span className="text-[10px] text-slate-600">{feed.length} {t('observe.feedRecords')}</span>
           </div>
 
           {feed.length === 0 ? (
-            <p className="text-[11px] text-slate-500 py-4 text-center">Henüz kayıt yok.</p>
+            <p className="text-[11px] text-slate-500 py-4 text-center">{t('observe.noRecords')}</p>
           ) : (
             <div className="flex flex-col gap-1">
               {feed.map((s, i) => (
@@ -175,15 +176,15 @@ export default function ObserveView() {
         {/* Today totals */}
         <div className="fluent-card p-5">
           <div className="flex items-end justify-between mb-3">
-            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">📊 BUGÜN</span>
+            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">{t('observe.todayLabel')}</span>
             <span className="text-[11px] text-slate-400">
-              {today ? fmtDur(today.totalSeconds) : '0 dk'} aktif • {today?.samples ?? 0} kayıt
-              {(today?.typedChars ?? 0) > 0 && <span className="text-amber-400/80"> • ⌨ {today?.typedChars ?? 0} karakter</span>}
+              {t('observe.todaySummary', { active: today ? fmtDur(today.totalSeconds) : '0 dk', samples: today?.samples ?? 0 })}
+              {(today?.typedChars ?? 0) > 0 && <span className="text-amber-400/80"> • ⌨ {today?.typedChars ?? 0} {t('observe.typedChars', { count: today?.typedChars ?? 0 })}</span>}
             </span>
           </div>
 
           {(today?.appSeconds.length ?? 0) === 0 ? (
-            <p className="text-[11px] text-slate-500 py-3 text-center">Kayıt başlayınca burada görünür.</p>
+            <p className="text-[11px] text-slate-500 py-3 text-center">{t('observe.noDataYet')}</p>
           ) : (
             <div className="flex flex-col gap-1.5">
               {today!.appSeconds.slice(0, 8).map(a => (
@@ -200,11 +201,11 @@ export default function ObserveView() {
 
           {status?.recentDays && status.recentDays.length > 0 && (
             <div className="border-t border-white/5 mt-4 pt-3 flex flex-col gap-1">
-              <span className="text-xs font-semibold text-slate-300 mb-1">Son günler</span>
+              <span className="text-xs font-semibold text-slate-300 mb-1">{t('observe.recentDays')}</span>
               {status.recentDays.slice(-7).map(d => (
                 <div key={d.date} className="flex items-center justify-between">
                   <span className="text-[11px] text-slate-400">{fmtDate(d.date)}</span>
-                  <span className="text-[11px] text-slate-500">{fmtDur(d.totalSeconds)} • {d.samples} kayıt</span>
+                  <span className="text-[11px] text-slate-500">{fmtDur(d.totalSeconds)} • {d.samples} {t('observe.feedRecords')}</span>
                 </div>
               ))}
             </div>
@@ -214,10 +215,7 @@ export default function ObserveView() {
         {/* Privacy / detail note */}
         <div className="rounded-xl border border-white/5 bg-white/2 p-4">
           <p className="text-[10px] text-slate-500 leading-relaxed">
-            👁️ Gözlem modu <span className="text-slate-400">data/surveillance/</span> klasörüne günlük kayıt yazar
-            ve bu cihazdan çıkmaz. Kayıtlar uygulama adı + pencere başlığı (dosya/sekme adı gibi) + o pencerede
-            yazılan metin + zaman damgasıdır. Şifre/kimlik pencereleri atlanır; veriler yedeklemek için
-            <span className="text-slate-400"> Toplanan Veriler → Dışa Aktar</span> ile tek dosyaya alınabilir.
+            👁️ {t('observe.privacyNote')}
           </p>
         </div>
       </div>

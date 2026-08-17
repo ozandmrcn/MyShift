@@ -8,6 +8,8 @@ out/
 dist/
 release/
 *.tsbuildinfo
+*.asar
+*.asar.unpacked
 
 # electron-vite temporary config files
 electron.vite.config.*.mjs

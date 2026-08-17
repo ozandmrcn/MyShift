@@ -285,4 +285,12 @@
   /* Fluent toggle switch — track turns accent-colored when checked */
   .toggle-checked { transition: background-color 0.2s; }
   .peer:checked ~ .toggle-checked { background-color: var(--accent-600); }
+
+  /* Clock font variants */
+  .clock-font-jetbrains { font-family: 'JetBrains Mono', monospace; }
+  .clock-font-fira { font-family: 'Fira Code', monospace; }
+  .clock-font-inter { font-family: 'Inter', sans-serif; }
+  .clock-font-space { font-family: 'Space Grotesk', sans-serif; }
+  .clock-font-dm { font-family: 'DM Sans', sans-serif; }
+  .clock-font-outfit { font-family: 'Outfit', sans-serif; }
 }

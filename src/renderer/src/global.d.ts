@@ -44,8 +44,10 @@ export interface IElectronAPI {
     export: () => Promise<{ ok: boolean; file?: string; error?: string }>
     import: () => Promise<{ ok: boolean; notes?: number; files?: number; storeKeys?: number; error?: string }>
     clearSurveillance: () => Promise<{ ok: boolean; error?: string }>
+    clearAll: () => Promise<{ ok: boolean; error?: string }>
     onImported?: (callback: () => void) => () => void
   }
+  onFlushState: (callback: () => void) => () => void
 }
 
 declare global {

@@ -54,10 +54,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     export: () => ipcRenderer.invoke('data:export'),
     import: () => ipcRenderer.invoke('data:import'),
     clearSurveillance: () => ipcRenderer.invoke('data:clear-surveillance'),
+    clearAll: () => ipcRenderer.invoke('data:clearAll'),
     onImported: (callback: () => void) => {
       const listener = () => callback()
       ipcRenderer.on('data:imported', listener)
       return () => ipcRenderer.removeListener('data:imported', listener)
     }
+  },
+  onFlushState: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('flush-state', listener)
+    return () => ipcRenderer.removeListener('flush-state', listener)
   }
 })

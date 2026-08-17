@@ -276,7 +276,11 @@ export function useLiveShiftEngine() {
         isOvertime: false,
         overtimeSeconds: 0,
         shiftStartSecs: 0,
-        shiftEndSecs: 0
+        shiftEndSecs: 0,
+        isChronoWork: false,
+        isChronoBreak: false,
+        chronoWorkSecs: Math.floor(chronoWorkTotalMs / 1000),
+        chronoBreakSecs: Math.floor(chronoBreakTotalMs / 1000)
       }
     }
 
@@ -291,6 +295,15 @@ export function useLiveShiftEngine() {
     const lastAct = sorted[sorted.length - 1]
     const shiftStartSecs = timeToSeconds(`${firstAct.startTime}:00`)
     const shiftEndSecs = timeToSeconds(`${lastAct.endTime}:00`)
+
+    // Overnight shift detection: endTime < startTime means the shift crosses midnight.
+    // E.g. 23:00 → 01:00 means the shift wraps around 00:00.
+    const isOvernight = shiftStartSecs > shiftEndSecs
+
+    // Helper: check if a time-of-day (in seconds) falls within a shift/activity window
+    // that may cross midnight. For overnight ranges (start > end), the window wraps: [start..86400] ∪ [0..end].
+    const inWindow = (t: number, start: number, end: number) =>
+      start > end ? (t >= start || t <= end) : (t >= start && t <= end)
 
     // Check if shift is manually completed by user for today
     const isManuallyCompleted = completedShifts.includes(currentDateStr)
@@ -337,17 +350,30 @@ export function useLiveShiftEngine() {
         isOvertime = true
         overtimeSeconds = overtime
       }
-    } else if (currentSecs < shiftStartSecs) {
-      isBeforeShift = true
-      nextActivity = firstAct
-      remainingSeconds = shiftStartSecs - currentSecs
-    } else if (currentSecs >= shiftEndSecs) {
-      // Overtime! (Vardiya Bitiş Saati Aşıldı ama kullanıcı henüz manuel tamamlamadı)
-      isOvertime = true
-      currentActivity = null
-      nextActivity = null
-      overtimeSeconds = currentSecs - shiftEndSecs
-      remainingSeconds = overtimeSeconds
+    } else if (!inWindow(currentSecs, shiftStartSecs, shiftEndSecs)) {
+      // Outside the shift window. Determine if before or overtime.
+      // For overnight shifts there is no "overtime" — the gap between shiftEnd and
+      // shiftStart is simply the non-working period (before shift for the next day).
+      if (isOvernight) {
+        // Overnight: the gap is (shiftEnd, shiftStart). User is "before shift".
+        isBeforeShift = true
+        nextActivity = firstAct
+        // Remaining = seconds until shiftStart wraps around
+        remainingSeconds = currentSecs < shiftStartSecs
+          ? shiftStartSecs - currentSecs
+          : (86400 - currentSecs) + shiftStartSecs
+      } else if (currentSecs < shiftStartSecs) {
+        isBeforeShift = true
+        nextActivity = firstAct
+        remainingSeconds = shiftStartSecs - currentSecs
+      } else {
+        // Overtime! (Vardiya Bitiş Saati Aşıldı ama kullanıcı henüz manuel tamamlamadı)
+        isOvertime = true
+        currentActivity = null
+        nextActivity = null
+        overtimeSeconds = currentSecs - shiftEndSecs
+        remainingSeconds = overtimeSeconds
+      }
     } else {
       // We are inside the shift duration.
       //
@@ -364,16 +390,25 @@ export function useLiveShiftEngine() {
         const act = sorted[i]
         const actStartSecs = timeToSeconds(`${act.startTime}:00`)
         const actEndSecs = timeToSeconds(`${act.endTime}:00`)
+        const actOvernight = actStartSecs > actEndSecs
 
-        if (currentSecs >= actEndSecs) {
-          // This activity's window is fully over. A work activity that was never
-          // confirmed simply counts as aşım (idle) and falls out of the plan.
+        // Check if this activity's window is fully over.
+        // For overnight activities, "fully over" means we're past the end AND not in the window.
+        const actFinished = actOvernight
+          ? (!inWindow(currentSecs, actStartSecs, actEndSecs) && currentSecs > actEndSecs && currentSecs < actStartSecs)
+          : (currentSecs >= actEndSecs)
+
+        if (actFinished) {
           previousEnded = act
           continue
         }
 
-        if (currentSecs < actStartSecs) {
-          // Not started yet: we're in the gap after the previous activity.
+        // Check if this activity hasn't started yet.
+        const actNotStarted = actOvernight
+          ? (!inWindow(currentSecs, actStartSecs, actEndSecs) && currentSecs < actStartSecs && currentSecs > actEndSecs)
+          : (currentSecs < actStartSecs)
+
+        if (actNotStarted) {
           nextActivity = act
           if (!act.isBreak && i > 0 && !confirmedSet.has(act.id)) {
             pendingActivity = act
@@ -384,20 +419,23 @@ export function useLiveShiftEngine() {
 
         // currentSecs is inside this activity's window.
         if (act.isBreak) {
-          // Breaks auto-start — never gated.
           currentActivity = act
         } else if (i === 0 || confirmedSet.has(act.id)) {
           currentActivity = act
         } else {
-          // Work activity already started but not yet confirmed → pending aşım.
           pendingActivity = act
           pendingAfter = previousEnded
         }
 
         if (currentActivity) {
-          remainingSeconds = actEndSecs - currentSecs
+          // Remaining seconds: handle overnight activity windows
+          remainingSeconds = actOvernight
+            ? (currentSecs <= actEndSecs ? actEndSecs - currentSecs : (86400 - currentSecs) + actEndSecs)
+            : actEndSecs - currentSecs
           const durationSecs = act.duration * 60
-          const elapsedSecs = currentSecs - actStartSecs
+          const elapsedSecs = actOvernight
+            ? (currentSecs >= actStartSecs ? currentSecs - actStartSecs : (86400 - actStartSecs) + currentSecs)
+            : currentSecs - actStartSecs
           activityProgress = durationSecs > 0 ? (elapsedSecs / durationSecs) * 100 : 0
           if (i + 1 < sorted.length) {
             nextActivity = sorted[i + 1]
@@ -414,9 +452,14 @@ export function useLiveShiftEngine() {
     } else if (durationMode) {
       shiftProgress = durationTargetSecs > 0 ? Math.min(100, (payWorkSecs / durationTargetSecs) * 100) : 0
     } else if (!isBeforeShift && !isOvertime) {
-      const totalShiftDuration = shiftEndSecs - shiftStartSecs
-      const elapsedShiftSecs = currentSecs - shiftStartSecs
-      shiftProgress = totalShiftDuration > 0 ? (elapsedShiftSecs / totalShiftDuration) * 100 : 0
+      // Inside the shift — compute elapsed time, handling overnight wrap.
+      const totalShiftDuration = isOvernight
+        ? (86400 - shiftStartSecs) + shiftEndSecs
+        : shiftEndSecs - shiftStartSecs
+      const elapsedShiftSecs = isOvernight
+        ? (currentSecs >= shiftStartSecs ? currentSecs - shiftStartSecs : (86400 - shiftStartSecs) + currentSecs)
+        : currentSecs - shiftStartSecs
+      shiftProgress = totalShiftDuration > 0 ? Math.min(100, (elapsedShiftSecs / totalShiftDuration) * 100) : 0
     } else if (isOvertime) {
       shiftProgress = 100
     }
@@ -431,12 +474,17 @@ export function useLiveShiftEngine() {
         activitiesStatus[act.id] = isShiftFinished ? 'completed' : 'active'
       } else if (isManuallyCompleted) {
         activitiesStatus[act.id] = 'completed'
-      } else if (currentSecs < actStartSecs) {
-        activitiesStatus[act.id] = 'future'
-      } else if (currentSecs >= actEndSecs) {
-        activitiesStatus[act.id] = 'completed'
-      } else {
+      } else if (inWindow(currentSecs, actStartSecs, actEndSecs)) {
         activitiesStatus[act.id] = 'active'
+      } else {
+        // Outside this activity's window — check if it's past or future.
+        const actOvernight = actStartSecs > actEndSecs
+        if (actOvernight) {
+          // For overnight: past if we're between end and start (in the gap)
+          activitiesStatus[act.id] = (!inWindow(currentSecs, actStartSecs, actEndSecs) && currentSecs > actEndSecs && currentSecs < actStartSecs) ? 'completed' : 'future'
+        } else {
+          activitiesStatus[act.id] = currentSecs >= actEndSecs ? 'completed' : 'future'
+        }
       }
     })
 
@@ -494,12 +542,10 @@ export function useLiveShiftEngine() {
     // shift for today, the user is simply free — NOT in aşım.
     // In Pay mode an over-budget break (bütçesi dolmuşken başlatılan mola) is NOT a
     // real break — it counts as aşım while it runs.
-    // In Chrono mode: idle = chronoMode === 'idle' (waiting to start / between sessions).
+    // Chrono mode does NOT have aşım — "idle" just means paused/stopped.
     let idleNow: boolean
     if (settings.mode === 'chrono') {
-      // No aşım if the user has never started today — only after the first start.
-      const hasStartedToday = chronoWorkAccumMs > 0 || chronoMode !== 'idle'
-      idleNow = hasStartedToday && chronoMode === 'idle'
+      idleNow = false
     } else {
       const overBudgetBreak = settings.mode === 'pay' && !!runningBreak && runningBreak.overBudget
       idleNow = !!resolvedTemplate && resolvedTemplate.activities.length > 0
@@ -509,14 +555,14 @@ export function useLiveShiftEngine() {
   }, [engineState, updateIdle, resolvedTemplate, settings.mode, runningBreak, chronoMode, chronoWorkAccumMs])
 
   // Duration mode: drive the live work accumulator. "Working" = there is a shift,
-  // it isn't finished yet and the user is not on a break. Once the target is met
-  // (overtime) the accumulator freezes at the target — extra seconds count as aşım
-  // via the idle accumulator until the user manually completes the shift.
+  // it isn't finished yet, not overtime, not before shift, the user is not on a break,
+  // and the user hasn't manually paused.
   useEffect(() => {
-    if (!durationMode) return
-    const workingNow = !!resolvedTemplate && !engineState.isShiftFinished && !engineState.isOvertime && runningBreak === null
+    if (settings.mode !== 'pay') return
+    const payPaused = useShiftStore.getState().payPaused
+    const workingNow = !payPaused && !!resolvedTemplate && !engineState.isShiftFinished && !engineState.isOvertime && !engineState.isBeforeShift && runningBreak === null
     updatePayWork(workingNow)
-  }, [durationMode, resolvedTemplate, engineState.isShiftFinished, engineState.isOvertime, runningBreak, updatePayWork])
+  }, [settings.mode, resolvedTemplate, engineState.isShiftFinished, engineState.isOvertime, engineState.isBeforeShift, runningBreak, updatePayWork])
 
   // Payback auto-finish: as soon as the paid amount reaches the owed aşım, the
   // payback session ends on its own — it never stays open to over-pay.
@@ -601,29 +647,21 @@ export function useLiveShiftEngine() {
     // `time` ticks every second so a live break keeps growing on screen
   }, [settings.mode, breakUsage, runningBreak, resolvedTemplate, timeString, time, chronoBreakTotalMs])
 
-  // Live worked-time estimate (based on the real clock, ignoring manual rewind).
-  // Duration mode: the live work accumulator (work only counts while actually
-  // working — breaks never count). Pay window mode: shift window minus planned
-  // break time. MyShift: sum of elapsed activities (breaks excluded).
+  // Live worked-time estimate — driven by the accumulator which only counts real
+  // work time (breaks excluded). In Pay mode the accumulator is gated by
+  // isBeforeShift / isOvertime / runningBreak, so it only runs during the actual
+  // work window. Duration mode also uses the same accumulator.
   const workedSeconds = useMemo(() => {
     if (settings.mode === 'chrono') {
       return Math.floor(chronoWorkTotalMs / 1000)
     }
     if (settings.mode === 'pay') {
-      if (settings.payTargetMode === 'duration') {
-        return Math.floor(payWorkTotalMs / 1000)
-      }
-      if (!payTemplate) return 0
-      const startSecs = timeToSeconds(`${settings.payShiftStart}:00`)
-      const endSecs = timeToSeconds(`${settings.payShiftEnd}:00`)
-      const realSecs = timeToSeconds(timeString)
-      const elapsed = Math.max(0, Math.min(endSecs, realSecs) - startSecs)
-      return Math.max(0, elapsed - breakSeconds)
+      return Math.floor(payWorkTotalMs / 1000)
     }
     return resolvedTemplate && resolvedTemplate.activities.length > 0
       ? computeWorkedSeconds(resolvedTemplate.activities, timeToSeconds(timeString))
       : 0
-  }, [settings.mode, settings.payTargetMode, settings.payShiftStart, settings.payShiftEnd, payTemplate, payWorkTotalMs, breakSeconds, resolvedTemplate, timeString, chronoWorkTotalMs])
+  }, [settings.mode, payWorkTotalMs, resolvedTemplate, timeString, time, chronoWorkTotalMs])
 
   // Persist a daily snapshot for the History page + the hourly today log for the
   // "Bugünün Özeti" tab (both throttled to once a minute). Hourly idle/payback are
@@ -660,7 +698,11 @@ export function useLiveShiftEngine() {
     const { currentActivity, isBeforeShift, isShiftFinished, isOvertime } = engineState
     const clock = timeString.substring(0, 5)
     let status: string
-    if (currentActivity) {
+    if (settings.mode === 'chrono') {
+      if (engineState.isChronoWork) status = `⏱ Çalışma: ${formatRemaining(engineState.chronoWorkSecs)}`
+      else if (engineState.isChronoBreak) status = `☕ Mola: ${formatRemaining(engineState.chronoBreakSecs)}`
+      else status = '⏸ Duraklatıldı'
+    } else if (currentActivity) {
       status = `${currentActivity.icon} ${currentActivity.name}`
     } else if (isBeforeShift) {
       status = 'Vardiya başlamadı'
@@ -792,6 +834,7 @@ export function useLiveShiftEngine() {
     ...engineState,
     remainingTimeStr: formatRemaining(engineState.remainingSeconds, engineState.isOvertime),
     effectiveTime: secondsToHHMM(effectiveSecs),
+    effectiveSecs,
     durationMode,
     durationTargetSecs,
     payWorkSecs,
