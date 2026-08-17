@@ -71,7 +71,7 @@ export async function generateComment(ctx: MotivationContext, opts: CommentOptio
         currentAppTitle: ctx.currentAppTitle ?? null,
         currentAppSeconds: ctx.currentAppSeconds,
         topApps: ctx.topApps ?? [],
-        recentLines: recent.slice(-6)
+        recentLines: recent.slice(-10)
       }
       const result = await withTimeout(api.ai.generateComment(req), 14000)
       if (result && typeof result.text === 'string') {

@@ -392,13 +392,22 @@ ipcMain.handle('ai:generate-comment', async (_event, req: AiCommentRequest): Pro
   // pre-processed into complete, meaningful words (split flushes are re-joined,
   // half-typed trailing words are dropped) so the AI never latches onto a
   // meaningless fragment like "alt" while the user is typing "altyazı".
+  // Additionally, extract a window of recent typed snippets (typedHistory) so the
+  // AI can see the user's writing patterns over time, not just the last flush.
   const profile = loadAiProfile()
   const snap = getSurveillanceSnapshot?.()
-  const typedText = snap ? extractMeaningfulTyped(snap.recent, 3) : null
+  const typedText = snap ? extractMeaningfulTyped(snap.recent) : null
+  const typedHistory = snap
+    ? snap.recent
+        .filter(s => typeof s.typed === 'string' && s.typed.trim().length > 3)
+        .slice(-10)
+        .map(s => s.typed!.trim().slice(0, 80))
+    : []
   const enriched: AiCommentRequest = {
     ...req,
     typedText,
     typedCharsToday: snap?.today?.typedChars ?? 0,
+    typedHistory,
     profileNotes: profile.notes.map(n => n.text)
   }
   return generateAiComment(enriched, cfg)

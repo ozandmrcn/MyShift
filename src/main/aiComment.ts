@@ -13,7 +13,7 @@ export interface AiCommentConfig {
   model: string
 }
 
-const SYSTEM_PROMPT = `Sen MyShift adlı vardiya takip uygulamasının iç sesisin. Kullanıcı, bir önceki günü yaşadığın gibi bir kişilik yok; ama sen taş gibi, soğuk, kuru ve sarkastik bir iç ses çıkarırsın.
+const SYSTEM_PROMPT = `Sen MyShift adlı vardiya takip uygulamasının iç sesisin. Kullanıcıyı iyi tanıyorsun — birikmiş gözlem verilerin, klavye geçmişin, uygulama alışkanlıkların ve profil notların var. Bu verileri bir bütün olarak değerlendirerek yorum yap. Kullanıcıyı tanıyan, onun rutinlerini bilen biri gibi konuş.
 
 Kurallar:
 - TON: soğuk, karanlık, kuru, sarkastik. ASLA tatlı, cesaretlendirici veya pozitif olma. Sıcaklık ve teselli yok.
@@ -22,8 +22,15 @@ Kurallar:
 - "Yapay zeka" gibi konuşma. Genel geçer, herkese uygun cümlelerden kaçın. Sanki uygulama kullanıcıyı yakından tanıyor ve o anki durumu kuru bir gözle yorumluyormuş gibi yaz. Tırnak içinde ironi ve parantez içi karanlık küçük notlar serbest.
 - Her seferinde farklı bir şey yaz. Aynı kalıbı, aynı kelimeleri tekrarlama. Yapıyı değiştir: bazen tek cümle, bazen kısa bir gözlem + kapanış, bazen sadece bir soru.
 - Kullanıcının o anki durumunu (aktif aktivite, mola, aşım, payback, vardiya bitti vb.) yorumla.
-- SIK (~%35) kullanıcının klavye aktivitesinden anlamlı bir şey çıkar: "Son yazılan içerik" (typedText) kullanıcının neyle uğraştığını gösterir; varsa yazdığına dair kuru, bilmiş bir gönderme yap (yazdığı cümleyi AYNEN kopyalama, konusundan bahset). typedText boşsa (gözlem modu kapalı) klavye göndermesi yapma.
-- NADİREN (~%10) uygulama adına gönderme yap (o an açık uygulama / topApps). Uygulama adı ikincil bilgidir — önce klavye aktivitesini kullan. Kalan zamanlarda doğrudan vardiya/mola durumunu yorumla.
+- VERİ KULLANIM ÖNCELİĞİ (tümünü bir bütün olarak değerlendir, sadece birine takılma):
+  1. PROFİL NOTLARI (~%30): Birikmiş gözlem notları kullanıcıyı tanımanın temelidir. Bunları doğal şekilde referans al — rutinlerini, alışkanlıklarını, tekrar eden davranışlarını hatırla. "Her gün aynı saatte..." veya "Genelde ... yaparken..." gibi ifadelerle kullan.
+  2. KLAVYE GEÇMİŞİ (~%20): Son yazılan içerik (typedText) VE yazılan geçmiş (typedHistory) birlikte değerlendir. Tek kelimeye değil, yazma kalıbına, konu bütünlüğüne bak. typedText tek bir kelimeyse ve typedHistory varsa, geçmişi de hesaba kat — kullanıcının ne tür içeriklerle uğraştığını anla.
+  3. UYGULAMA ALIŞKANLIKLARI (~%15): Bugünkü ve geçmiş uygulama kullanımı. "Bugün yine X'te geçirdin" gibi doğal göndermeler yap. Sadece uygulama adını sayma, ne yaptığını çıkar.
+  4. VARDİYA DURUMU (~%20): Aktif aktivite, aşım, mola, ilerleme. Duruma göre yorum yap.
+  5. SON YORUMLAR (~%15): Önceki yorumları tekrarlama, farklı bir açı bul.
+
+- GÖZLEM VERİSİ VARSA (typedHistory veya typedText dolu): Bu veriyi aktif kullan. Kullanıcının ne yazdığı, ne hakkında düşündüğü, neye odaklandığı hakkında çıkarımlar yap. Ama tek bir kelimeyi kopyalama — konusundan bahset, kalıbı yorumla.
+- GÖZLEM VERİSİ YOKSA (typedText ve typedHistory boş): Klavye göndermesi yapma. Doğrudan vardiya/mola durumunu veya profil notlarını kullan.
 
 Çıktı SADECE geçerli JSON olmalı, başka hiçbir şey yazma:
 {"text": "yorum", "highlight": "yorumun içinde geçen ve farklı renkle vurgulanacak tek bir kelime ya da kısa ifade (istenirse boş string olabilir)"}
@@ -47,6 +54,9 @@ function buildUserPrompt(req: AiCommentRequest): string {
     : 'yok'
 
   const fields: [string, unknown][] = [
+    ['Kullanıcı hakkında birikmiş bilgin (profil notları — bunları doğal şekilde kullan, ezberden okuma)', (req.profileNotes ?? []).join(' | ') || 'henüz yok'],
+    ['Son yazılan içerik (klavye aktivitesi — en önemli veri, gözlem modu açıkken dolu olur)', (req.typedText ?? '').trim() ? `"${(req.typedText ?? '').trim()}"` : 'yok (gözlem modu kapalı)'],
+    ['Yazılan geçmiş (son kayıtlardan yazma kalıpları — konu bütünlüğü için kullan)', (req.typedHistory ?? []).join(' | ') || 'yok'],
     ['Şu anki durum (state)', req.state],
     ['Saat', `${req.hour}:00`],
     ['Aktif aktivite', req.activityName ? `${req.activityIcon ?? ''} ${req.activityName}` : 'yok'],
@@ -57,12 +67,10 @@ function buildUserPrompt(req: AiCommentRequest): string {
     ['Bugün çalışılan süre', fmtDur(req.workedSeconds)],
     ['Şu anki mola/aşım süresi', fmtDur(req.breakSeconds)],
     ['Aşım', fmtDur(req.idleSeconds)],
-    ['Son yazılan içerik (klavye aktivitesi — en önemli veri, gözlem modu açıkken dolu olur)', (req.typedText ?? '').trim() ? `"${(req.typedText ?? '').trim()}"` : 'yok (gözlem modu kapalı)'],
     ['Bugün yazılan toplam karakter (klavye aktivitesi)', req.typedCharsToday ?? 0],
     ['O an açık uygulama (ikincil bilgi)', app],
     ['Bugün en çok kullanılan uygulamalar (ikincil bilgi)', top || 'yok'],
-    ['Son yazdığın yorumlar (bunları TEKRARLAMA)', (req.recentLines ?? []).join(' | ') || 'yok'],
-    ['Kullanıcı hakkında birikmiş bilgin (profil notları — bunları doğal şekilde kullan, ezberden okuma)', (req.profileNotes ?? []).join(' | ') || 'henüz yok']
+    ['Son yazdığın yorumlar (bunları TEKRARLAMA)', (req.recentLines ?? []).join(' | ') || 'yok']
   ]
 
   return fields.map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join('\n')
@@ -280,7 +288,7 @@ export async function testAiConnection(cfg: AiCommentConfig): Promise<AiTestResu
 //   2. drops the trailing token that has no space after it (still being typed),
 //   3. keeps only word-like tokens (>=3 letters, Turkish-aware) and returns the
 //      last `maxWords` of them.
-export function extractMeaningfulTyped(samples: Array<{ typed?: string }>, maxWords = 3): string | null {
+export function extractMeaningfulTyped(samples: Array<{ typed?: string }>, maxWords = 8): string | null {
   const flushes = samples
     .filter(s => typeof s.typed === 'string' && s.typed.trim().length > 0)
     .slice(-4) // a word spans at most two adjacent flushes → 4 is plenty

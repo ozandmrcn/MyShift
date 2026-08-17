@@ -85,25 +85,68 @@ export function buildSurveillanceSummary(days = 7, includeTyped = false): string
 
 function offlineNotes(summary: string): string[] {
   const notes: string[] = []
-  // Crude heuristic: pick apps that dominate the summary.
-  const appMatches = summary.matchAll(/([a-zA-Z0-9_\- ]+?) \((\d+ (?:sa|dk)(?: \d+ dk)?)\)/g)
+  // Parse app usage from the summary for varied, specific notes.
+  const appMatches = [...summary.matchAll(/([a-zA-Z0-9_\- ]+?) \((\d+ (?:sa|dk)(?: \d+ dk)?)\)/g)]
   const seen = new Set<string>()
+  const apps: { name: string; dur: string }[] = []
   for (const m of appMatches) {
     const app = m[1].trim()
     if (seen.has(app)) continue
     seen.add(app)
-    if (seen.size <= 4) notes.push(`Gözlemlerimin çoğu ${app} etrafında dönüyor.`)
+    apps.push({ name: app, dur: m[2] })
   }
-  if (notes.length === 0) notes.push('Henüz yeterli gözetleme verisi yok; birkaç oturum sonra daha net konuşabilirim.')
-  return notes
+
+  if (apps.length === 0) {
+    notes.push('Henüz yeterli gözetleme verisi yok; birkaç oturum sonra daha net konuşabilirim.')
+    return notes
+  }
+
+  // App-based notes
+  if (apps[0]) notes.push(`Bugünün favorisi ${apps[0].name} — ${apps[0].dur} boyunca açık kalmış.`)
+  if (apps[1]) notes.push(`${apps[1].name} da fena değil, ${apps[1].dur} göz kırpmadan.`)
+
+  // Title-based notes
+  const titleMatches = [...summary.matchAll(/sık başlıklar: (.+?)(?:\s*\||\s*$)/g)]
+  if (titleMatches[0]) {
+    const titles = titleMatches[0][1].trim()
+    if (titles.length > 10) notes.push(`Pencere başlıklarından anladığım kadarıyla: ${titles.slice(0, 70)}`)
+  }
+
+  // Typed-text based notes
+  const typedMatches = [...summary.matchAll(/yazılan \(özet\): "([^"]+)"/g)]
+  if (typedMatches[0]) {
+    const typed = typedMatches[0][1].trim()
+    if (typed.length > 5) notes.push(`Klavyeden akan metin: "${typed.slice(0, 60)}" — ne yazıyorsa ilginç.`)
+  }
+
+  // Duration extremes
+  if (apps.length >= 3) {
+    const totalMin = apps.reduce((s, a) => {
+      const hm = a.dur.match(/(\d+)\s*sa/)
+      const mm = a.dur.match(/(\d+)\s*dk/)
+      return s + (hm ? parseInt(hm[1]) * 60 : 0) + (mm ? parseInt(mm[1]) : 0)
+    }, 0)
+    if (totalMin > 120) notes.push(`Toplam ${Math.round(totalMin / 60)} saate yakın bilgisayar başında — tempo yüksek.`)
+  }
+
+  // Fallback variety
+  if (notes.length < 3) notes.push('Veriler ilginç bir tablo çiziyor, biraz daha bekleyelim.')
+
+  return notes.slice(0, 6)
 }
 
 const ANALYZE_SYSTEM_PROMPT = `Sen MyShift'in veri analizi asistanısın. Sana kullanıcının bilgisayar kullanımına dair ham kayıtlar verilecek (gün, uygulama, süre, sık görülen pencere başlıkları, bazen yazılan metin özeti). Bu kayıtlardan kullanıcının alışkanlıklarını, rutinlerini ve tuhaf/ironik yönlerini tespit edip KISA gözlem notlarına dönüştür.
 
 Kurallar:
 - TON: soğuk, kuru, hafif sarkastik. Asla pohpohlama.
-- Her not en fazla ~70 karakter.
-- 3-6 not üret. Genelleme yapma; doğrudan veride gördüğün şeye dayan.
+- Her not en fazla ~80 karakter.
+- 5-8 not üret. Çeşitlilik önemli:
+  - Uygulama alışkanlıklarına dair notlar (hangi uygulamayı ne kadar kullandı)
+  - Yazma kalıplarına dair notlar (ne hakkında yazıyor, ne sıklıkla yazıyor)
+  - Zamanlama notları (hangi saatlerde aktif, ne zaman molaya giriyor)
+  - Dikkat çekici detaylar (beklenmedik uygulama kullanımı, uzun oturumlar)
+  - Tekrar eden davranışlar (her gün aynı şeyi yapıyor mu)
+- Genelleme yapma; doğrudan veride gördüğün şeye dayan. "Genelde X kullanıyor" demek yerine "Bugün X'te Y dakika geçirdi, çoğunlukla Z başlığını açık tuttu" gibi spesifik ol.
 - Emoji KULLANMA.
 - Çıktı SADECE geçerli JSON olmalı: {"notes": ["not1", "not2"]}`
 

@@ -22,6 +22,10 @@ export interface AiCommentRequest {
   // than the raw app name. Empty while observation is off.
   typedText?: string | null
   typedCharsToday?: number
+  // Recent typed content history — a chronological list of typed snippets from the
+  // last ~10 surveillance samples. Gives the AI a window into the user's writing
+  // patterns and topics over time, not just the last flush.
+  typedHistory?: string[]
   // The "what the AI knows about the user" profile notes (from surveillance
   // analysis + manual additions). Only sent to a remote provider if one is
   // enabled; never stored off-device otherwise.
