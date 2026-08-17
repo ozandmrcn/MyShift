@@ -614,6 +614,11 @@ export default function ShiftEditor() {
             <span className="font-semibold">💼 Pay Modu aktif.</span> Bu modda sabit başlangıç/bitiş saati ve mola bütçeleri kullanılır; aşağıdaki şablonlar uygulanmaz. Mola kaydı Panel sayfasından yapılır.
           </div>
         )}
+        {mode === 'chrono' && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[11px] text-amber-200 leading-relaxed">
+            <span className="font-semibold">⏱️ Krono Modu aktif.</span> Bu modda manuel kronometre kullanılır; şablonlar uygulanmaz. Çalışma/mola başlatma/durdurma Dashboard sayfasından yapılır.
+          </div>
+        )}
 
         {/* Template list */}
         <div className="fluent-card p-4">

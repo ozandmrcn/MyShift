@@ -67,7 +67,8 @@ export interface Settings {
 
   // Shift mode. 'myshift' = the activity-template mode (the classic MyShift behavior).
   // 'pay' = fixed start/end time with two daily break budgets (kısa mola + yemek molası).
-  mode: 'myshift' | 'pay'
+  // 'chrono' = manual chronograph — user starts/stops work and breaks with buttons.
+  mode: 'myshift' | 'pay' | 'chrono'
 
   // Pay mode configuration.
   // payTargetMode: 'window' = fixed start/end hours (classic); 'duration' = fixed
@@ -80,6 +81,10 @@ export interface Settings {
   payMealBreakMin: number // yemek molası (kahvaltı/öğle/akşam) daily budget in minutes
   payWorkReminderMin: number // 0=kapalı — bu kadar dk aralıksız çalışınca mola hatırlatır (örn. 50)
   payBreakReminderMin: number // 0=kapalı — kısa mola bu kadar dk sürünce "molayı aştın" uyarısı (örn. 15)
+
+  // Chrono mode — manual chronograph timers.
+  chronoWorkReminderMin: number // 0=kapalı — bu kadar dk aralıksız çalışınca mola hatırlatır
+  chronoBreakReminderMin: number // 0=kapalı — mola bu kadar dk sürünce "molayı aştın" uyarısı
 }
 
 export interface DayLog {
@@ -89,6 +94,7 @@ export interface DayLog {
   breakSeconds: number // planned (in-budget) break time, never counted as work
   breakCount: number // how many breaks were started
   completed: boolean
+  mode?: 'myshift' | 'pay' | 'chrono' // which mode was active for this day
 }
 
 // A finished pay-mode break — the detailed "Bugünün Özeti" log. `overBudget`
@@ -154,6 +160,14 @@ interface ShiftStore {
   payWorkStartTs: number | null
   payWorkDay: string
 
+  // Chrono mode — manual chronograph state.
+  // The user manually starts/stops work and break sessions via dashboard buttons.
+  chronoMode: 'idle' | 'work' | 'break' // current chrono activity
+  chronoStartedAt: number | null // Date.now() when the current chrono session started
+  chronoWorkAccumMs: number // accumulated work ms (closed sessions)
+  chronoBreakAccumMs: number // accumulated break ms (closed sessions)
+  chronoDay: string // "YYYY-MM-DD" the counters belong to
+
   // Pay-mode breaks. `breakDay` is the date the usage/count belong to (drives the
   // daily auto-reset). `breakUsage` maps subtype -> minutes already used today.
   runningBreak: PayBreak | null
@@ -204,6 +218,9 @@ interface ShiftStore {
   startBreak: (type: BreakType, subtype: BreakSubtype, overBudget: boolean) => void
   stopBreak: () => void
   resetBreaks: () => void
+  chronoStartWork: () => void
+  chronoStartBreak: () => void
+  chronoStop: () => void
   showReminder: (kind: 'work' | 'break', message: string) => void
   dismissReminder: () => void
   clearHistory: () => void
@@ -233,7 +250,9 @@ const defaultSettings: Settings = {
   payShortBreakMin: 90,
   payMealBreakMin: 30,
   payWorkReminderMin: 50,
-  payBreakReminderMin: 15
+  payBreakReminderMin: 15,
+  chronoWorkReminderMin: 50,
+  chronoBreakReminderMin: 15
 }
 
 // Helper to calculate duration in minutes between HH:mm and HH:mm
@@ -264,7 +283,12 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       paybackStartTs: s.paybackStartTs,
       payWorkAccumMs: s.payWorkAccumMs,
       payWorkStartTs: s.payWorkStartTs,
-      payWorkDay: s.payWorkDay
+      payWorkDay: s.payWorkDay,
+      chronoMode: s.chronoMode,
+      chronoStartedAt: s.chronoStartedAt,
+      chronoWorkAccumMs: s.chronoWorkAccumMs,
+      chronoBreakAccumMs: s.chronoBreakAccumMs,
+      chronoDay: s.chronoDay
     }
     const api = window.electronAPI
     if (api && api.store) {
@@ -324,6 +348,11 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   payWorkAccumMs: 0,
   payWorkStartTs: null,
   payWorkDay: '',
+  chronoMode: 'idle' as const,
+  chronoStartedAt: null,
+  chronoWorkAccumMs: 0,
+  chronoBreakAccumMs: 0,
+  chronoDay: '',
   runningBreak: null,
   breakDay: '',
   breakUsage: {},
@@ -379,6 +408,11 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           payWorkStartTs?: number | null
           payWorkDay?: string
           idleDay?: string
+          chronoMode?: 'idle' | 'work' | 'break'
+          chronoStartedAt?: number | null
+          chronoWorkAccumMs?: number
+          chronoBreakAccumMs?: number
+          chronoDay?: string
         } | null
 
         const savedDayLogs = (await api.store.get('dailyLogs', {})) as Record<string, DayLog>
@@ -425,6 +459,11 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           payWorkAccumMs: sameDay ? savedIdle.payWorkAccumMs ?? 0 : 0,
           payWorkStartTs: sameDay ? savedIdle.payWorkStartTs ?? null : null,
           payWorkDay: todayStr,
+          chronoMode: sameDay ? savedIdle.chronoMode ?? 'idle' : 'idle',
+          chronoStartedAt: sameDay ? savedIdle.chronoStartedAt ?? null : null,
+          chronoWorkAccumMs: sameDay ? savedIdle.chronoWorkAccumMs ?? 0 : 0,
+          chronoBreakAccumMs: sameDay ? savedIdle.chronoBreakAccumMs ?? 0 : 0,
+          chronoDay: todayStr,
           runningBreak: breakSameDay ? savedBreak.runningBreak ?? null : null,
           breakDay: todayStr,
           breakUsage: breakSameDay ? savedBreak.breakUsage ?? {} : {},
@@ -467,6 +506,11 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           payWorkAccumMs: bSameDay ? idleParsed.payWorkAccumMs ?? 0 : 0,
           payWorkStartTs: bSameDay ? idleParsed.payWorkStartTs ?? null : null,
           payWorkDay: bToday,
+          chronoMode: bSameDay ? idleParsed.chronoMode ?? 'idle' : 'idle',
+          chronoStartedAt: bSameDay ? idleParsed.chronoStartedAt ?? null : null,
+          chronoWorkAccumMs: bSameDay ? idleParsed.chronoWorkAccumMs ?? 0 : 0,
+          chronoBreakAccumMs: bSameDay ? idleParsed.chronoBreakAccumMs ?? 0 : 0,
+          chronoDay: bToday,
           runningBreak: bBreakSameDay ? breakParsed.runningBreak ?? null : null,
           breakDay: bToday,
           breakUsage: bBreakSameDay ? breakParsed.breakUsage ?? {} : {},
@@ -964,7 +1008,11 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       breakDay: day,
       lastBreakEndedAt: null,
       confirmedActivities: [],
-      reminder: null
+      reminder: null,
+      chronoMode: 'idle',
+      chronoStartedAt: null,
+      chronoWorkAccumMs: 0,
+      chronoBreakAccumMs: 0
     })
     persistIdle()
     persistBreak()
@@ -1044,6 +1092,70 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
 
   updateAppUsage: (snapshot) => {
     set({ appUsage: snapshot })
+  },
+
+  chronoStartWork: () => {
+    const s = get()
+    const now = new Date()
+    const day = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`
+
+    // If we were on a break, close it first
+    let extraBreakAccum = s.chronoBreakAccumMs
+    if (s.chronoMode === 'break' && s.chronoStartedAt) {
+      extraBreakAccum += Date.now() - s.chronoStartedAt
+    }
+
+    set({
+      chronoMode: 'work',
+      chronoStartedAt: Date.now(),
+      chronoBreakAccumMs: extraBreakAccum,
+      chronoDay: day,
+      lastBreakEndedAt: s.chronoMode === 'break' ? Date.now() : s.lastBreakEndedAt,
+    })
+    persistIdle()
+  },
+
+  chronoStartBreak: () => {
+    const s = get()
+    const now = new Date()
+    const day = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`
+
+    // Close current work session
+    let extraWorkAccum = s.chronoWorkAccumMs
+    if (s.chronoMode === 'work' && s.chronoStartedAt) {
+      extraWorkAccum += Date.now() - s.chronoStartedAt
+    }
+
+    set({
+      chronoMode: 'break',
+      chronoStartedAt: Date.now(),
+      chronoWorkAccumMs: extraWorkAccum,
+      chronoDay: day,
+    })
+    persistIdle()
+  },
+
+  chronoStop: () => {
+    const s = get()
+    let extraWorkAccum = s.chronoWorkAccumMs
+    let extraBreakAccum = s.chronoBreakAccumMs
+
+    if (s.chronoStartedAt) {
+      const elapsed = Date.now() - s.chronoStartedAt
+      if (s.chronoMode === 'work') {
+        extraWorkAccum += elapsed
+      } else if (s.chronoMode === 'break') {
+        extraBreakAccum += elapsed
+      }
+    }
+
+    set({
+      chronoMode: 'idle',
+      chronoStartedAt: null,
+      chronoWorkAccumMs: extraWorkAccum,
+      chronoBreakAccumMs: extraBreakAccum,
+    })
+    persistIdle()
   }
   }
 })

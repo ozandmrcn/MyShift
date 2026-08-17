@@ -204,7 +204,7 @@ export default function TodaySummary() {
           <h1 className="text-xl font-bold text-slate-100">Bugünün Özeti</h1>
           <p className="text-xs text-slate-500 mt-1 font-mono">
             {engine.currentDateStr} · Saat {engine.currentTime}
-            {settings.mode === 'pay' ? ' · PAY MODU' : activeTemplate ? ` · ${activeTemplate.name}` : ' · Vardiya yok'}
+            {settings.mode === 'pay' ? ' · PAY MODU' : settings.mode === 'chrono' ? ' · KRONO MODU' : activeTemplate ? ` · ${activeTemplate.name}` : ' · Vardiya yok'}
           </p>
         </div>
         <div className="flex items-center gap-2">

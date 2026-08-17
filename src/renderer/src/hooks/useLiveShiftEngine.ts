@@ -200,7 +200,7 @@ export function useLiveShiftEngine() {
     }
   }, [settings.mode, settings.payTargetMode, settings.payShiftStart, settings.payShiftEnd])
 
-  const resolvedTemplate = settings.mode === 'pay' ? payTemplate : activeTemplate
+  const resolvedTemplate = settings.mode === 'pay' ? payTemplate : (settings.mode === 'chrono' ? null : activeTemplate)
 
   // Duration mode: live work accumulator (single source of truth lives in the store,
   // updated by the updatePayWork effect below). Recomputes every second via `time`.
@@ -213,7 +213,53 @@ export function useLiveShiftEngine() {
   const durationTargetSecs = Math.max(0, settings.payDurationMin) * 60
 
   // Get current and next activities
+  // Chrono mode state
+  const chronoMode = useShiftStore((s) => s.chronoMode)
+  const chronoStartedAt = useShiftStore((s) => s.chronoStartedAt)
+  const chronoWorkAccumMs = useShiftStore((s) => s.chronoWorkAccumMs)
+  const chronoBreakAccumMs = useShiftStore((s) => s.chronoBreakAccumMs)
+  const chronoWorkTotalMs = chronoWorkAccumMs + (chronoMode === 'work' && chronoStartedAt !== null ? Math.max(0, Date.now() - chronoStartedAt) : 0)
+  const chronoBreakTotalMs = chronoBreakAccumMs + (chronoMode === 'break' && chronoStartedAt !== null ? Math.max(0, Date.now() - chronoStartedAt) : 0)
+
   const engineState = useMemo(() => {
+    // Chrono mode: no template, state driven by chronoMode store field.
+    if (settings.mode === 'chrono') {
+      const isChronoWork = chronoMode === 'work'
+      const isChronoBreak = chronoMode === 'break'
+      const virtualActivity: Activity | null = isChronoWork ? {
+        id: '__chrono__work',
+        name: 'Çalışma',
+        icon: '⏱️',
+        color: 'amber',
+        startTime: '00:00',
+        endTime: '23:59',
+        duration: 0,
+        notificationEnabled: false,
+        notificationSound: 'default'
+      } : null
+      return {
+        currentActivity: virtualActivity,
+        nextActivity: null,
+        pendingActivity: null,
+        pendingAfter: null,
+        awaitingConfirmation: false,
+        remainingSeconds: 0,
+        activityProgress: 0,
+        shiftProgress: 0,
+        activitiesStatus: {} as Record<string, 'completed' | 'active' | 'future'>,
+        isShiftFinished: false,
+        isBeforeShift: false,
+        isOvertime: false,
+        overtimeSeconds: 0,
+        shiftStartSecs: 0,
+        shiftEndSecs: 0,
+        isChronoWork,
+        isChronoBreak,
+        chronoWorkSecs: Math.floor(chronoWorkTotalMs / 1000),
+        chronoBreakSecs: Math.floor(chronoBreakTotalMs / 1000)
+      }
+    }
+
     if (!resolvedTemplate || resolvedTemplate.activities.length === 0) {
       return {
         currentActivity: null,
@@ -415,9 +461,13 @@ export function useLiveShiftEngine() {
       isOvertime,
       overtimeSeconds,
       shiftStartSecs,
-      shiftEndSecs
+      shiftEndSecs,
+      isChronoWork: false,
+      isChronoBreak: false,
+      chronoWorkSecs: 0,
+      chronoBreakSecs: 0
     }
-  }, [resolvedTemplate, effectiveSecs, completedShifts, confirmedActivities, currentDateStr, durationMode, payWorkSecs, durationTargetSecs])
+  }, [resolvedTemplate, effectiveSecs, completedShifts, confirmedActivities, currentDateStr, durationMode, payWorkSecs, durationTargetSecs, settings.mode, chronoMode, chronoWorkTotalMs, chronoBreakTotalMs])
 
   // ── Aşım (idle) stopwatch ────────────────────────────────────────────────────
   // Lives in the shared store (single source of truth) so Dashboard & Timeline
@@ -444,11 +494,19 @@ export function useLiveShiftEngine() {
     // shift for today, the user is simply free — NOT in aşım.
     // In Pay mode an over-budget break (bütçesi dolmuşken başlatılan mola) is NOT a
     // real break — it counts as aşım while it runs.
-    const overBudgetBreak = settings.mode === 'pay' && !!runningBreak && runningBreak.overBudget
-    const idleNow = !!resolvedTemplate && resolvedTemplate.activities.length > 0
-      && ((!engineState.currentActivity && !engineState.isBeforeShift && !engineState.isShiftFinished) || overBudgetBreak)
+    // In Chrono mode: idle = chronoMode === 'idle' (waiting to start / between sessions).
+    let idleNow: boolean
+    if (settings.mode === 'chrono') {
+      // No aşım if the user has never started today — only after the first start.
+      const hasStartedToday = chronoWorkAccumMs > 0 || chronoMode !== 'idle'
+      idleNow = hasStartedToday && chronoMode === 'idle'
+    } else {
+      const overBudgetBreak = settings.mode === 'pay' && !!runningBreak && runningBreak.overBudget
+      idleNow = !!resolvedTemplate && resolvedTemplate.activities.length > 0
+        && ((!engineState.currentActivity && !engineState.isBeforeShift && !engineState.isShiftFinished) || overBudgetBreak)
+    }
     updateIdle(idleNow)
-  }, [engineState, updateIdle, resolvedTemplate, settings.mode, runningBreak])
+  }, [engineState, updateIdle, resolvedTemplate, settings.mode, runningBreak, chronoMode, chronoWorkAccumMs])
 
   // Duration mode: drive the live work accumulator. "Working" = there is a shift,
   // it isn't finished yet and the user is not on a break. Once the target is met
@@ -474,6 +532,31 @@ export function useLiveShiftEngine() {
     }
   }, [paybackStartTs, paybackAccumMs, idleAccumMs, idleStartTs, time])
 
+  // ── Chrono work/break reminders ────────────────────────────────────────────
+  const showReminder = useShiftStore((s) => s.showReminder)
+  const chronoWorkReminderFired = useRef(false)
+  const chronoBreakReminderFired = useRef(false)
+  useEffect(() => {
+    if (settings.mode !== 'chrono') return
+    if (settings.chronoWorkReminderMin > 0 && engineState.isChronoWork && chronoStartedAt) {
+      const elapsedMin = (Date.now() - chronoStartedAt) / 60000
+      if (elapsedMin >= settings.chronoWorkReminderMin && !chronoWorkReminderFired.current) {
+        chronoWorkReminderFired.current = true
+        showReminder('work', `Sürekli ${settings.chronoWorkReminderMin} dk çalıştın — mola zamanı!`)
+      }
+    }
+    if (!engineState.isChronoWork) chronoWorkReminderFired.current = false
+
+    if (settings.chronoBreakReminderMin > 0 && engineState.isChronoBreak && chronoStartedAt) {
+      const elapsedMin = (Date.now() - chronoStartedAt) / 60000
+      if (elapsedMin >= settings.chronoBreakReminderMin && !chronoBreakReminderFired.current) {
+        chronoBreakReminderFired.current = true
+        showReminder('break', `Mola ${settings.chronoBreakReminderMin} dk'yı aştı — işe dönmelisin!`)
+      }
+    }
+    if (!engineState.isChronoBreak) chronoBreakReminderFired.current = false
+  }, [settings.mode, settings.chronoWorkReminderMin, settings.chronoBreakReminderMin, engineState.isChronoWork, engineState.isChronoBreak, chronoStartedAt, showReminder, time])
+
   const idleTotalMs = idleAccumMs + (idleStartTs !== null ? Math.max(0, Date.now() - idleStartTs) : 0)
   const paybackTotalMs = paybackAccumMs + (paybackStartTs !== null ? Math.max(0, Date.now() - paybackStartTs) : 0)
   // Net aşım — every second of an active payback subtracts from it
@@ -488,6 +571,9 @@ export function useLiveShiftEngine() {
   //    excluded — they accrue as aşım, not as break time).
   //  - MyShift: elapsed time inside planned break activities ("Mola mı?").
   const breakSeconds = useMemo(() => {
+    if (settings.mode === 'chrono') {
+      return Math.floor(chronoBreakTotalMs / 1000)
+    }
     if (settings.mode === 'pay') {
       const closed = Object.values(breakUsage).reduce((a, b) => a + (b ?? 0), 0) * 60
       const runningInBudget = runningBreak && !runningBreak.overBudget
@@ -513,13 +599,16 @@ export function useLiveShiftEngine() {
     }
     return s
     // `time` ticks every second so a live break keeps growing on screen
-  }, [settings.mode, breakUsage, runningBreak, resolvedTemplate, timeString, time])
+  }, [settings.mode, breakUsage, runningBreak, resolvedTemplate, timeString, time, chronoBreakTotalMs])
 
   // Live worked-time estimate (based on the real clock, ignoring manual rewind).
   // Duration mode: the live work accumulator (work only counts while actually
   // working — breaks never count). Pay window mode: shift window minus planned
   // break time. MyShift: sum of elapsed activities (breaks excluded).
   const workedSeconds = useMemo(() => {
+    if (settings.mode === 'chrono') {
+      return Math.floor(chronoWorkTotalMs / 1000)
+    }
     if (settings.mode === 'pay') {
       if (settings.payTargetMode === 'duration') {
         return Math.floor(payWorkTotalMs / 1000)
@@ -534,7 +623,7 @@ export function useLiveShiftEngine() {
     return resolvedTemplate && resolvedTemplate.activities.length > 0
       ? computeWorkedSeconds(resolvedTemplate.activities, timeToSeconds(timeString))
       : 0
-  }, [settings.mode, settings.payTargetMode, settings.payShiftStart, settings.payShiftEnd, payTemplate, payWorkTotalMs, breakSeconds, resolvedTemplate, timeString])
+  }, [settings.mode, settings.payTargetMode, settings.payShiftStart, settings.payShiftEnd, payTemplate, payWorkTotalMs, breakSeconds, resolvedTemplate, timeString, chronoWorkTotalMs])
 
   // Persist a daily snapshot for the History page + the hourly today log for the
   // "Bugünün Özeti" tab (both throttled to once a minute). Hourly idle/payback are
@@ -548,7 +637,7 @@ export function useLiveShiftEngine() {
     const nowMs = Date.now()
     if (nowMs - lastDayLogWrite.current < 60000) return
     lastDayLogWrite.current = nowMs
-    updateDayLog(currentDateStr, { workedSeconds, idleSeconds: idleLogSeconds, paybackSeconds, breakSeconds, breakCount })
+    updateDayLog(currentDateStr, { workedSeconds, idleSeconds: idleLogSeconds, paybackSeconds, breakSeconds, breakCount, mode: settings.mode })
 
     const hh = new Date(nowMs).getHours().toString().padStart(2, '0')
     const hourKey = `${hh}:00`
@@ -563,7 +652,7 @@ export function useLiveShiftEngine() {
       cursorIdle: baseIdle,
       cursorPayback: basePb
     })
-  }, [currentDateStr, workedSeconds, idleLogSeconds, paybackSeconds, breakSeconds, breakCount, updateDayLog, idleLogMs, idleStartTs, paybackAccumMs, paybackStartTs, todayHourly, setTodayHourly])
+  }, [currentDateStr, workedSeconds, idleLogSeconds, paybackSeconds, breakSeconds, breakCount, updateDayLog, idleLogMs, idleStartTs, paybackAccumMs, paybackStartTs, todayHourly, setTodayHourly, settings.mode])
 
   // Push live status to the tray tooltip (refreshed ~once per second via timeString)
   useEffect(() => {
@@ -718,6 +807,8 @@ export function useLiveShiftEngine() {
     startPayback,
     stopPayback,
     finishPayback,
-    timeOffset
+    timeOffset,
+    chronoMode,
+    chronoStartedAt,
   }
 }

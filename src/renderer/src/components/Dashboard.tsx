@@ -291,23 +291,35 @@ export default function Dashboard() {
     payWorkSecs,
     pendingActivity,
     pendingAfter,
-    awaitingConfirmation
+    awaitingConfirmation,
+    isChronoWork = false,
+    isChronoBreak = false,
+    chronoWorkSecs = 0,
+    chronoBreakSecs = 0,
+    chronoMode: chronoModeFromEngine = 'idle',
+    chronoStartedAt: _chronoStartedAt
   } = useLiveShiftEngine()
 
   const { completeShift, extendActiveShift, uncompleteShift, setTimeOffset, stopPayback, finishPayback, confirmActivity, dailyLogs } = useShiftStore()
   const mode = useShiftStore((s) => s.settings.mode)
   const runningBreak = useShiftStore((s) => s.runningBreak)
   const stopBreak = useShiftStore((s) => s.stopBreak)
+  const chronoStartWork = useShiftStore((s) => s.chronoStartWork)
+  const chronoStartBreak = useShiftStore((s) => s.chronoStartBreak)
+  const chronoStop = useShiftStore((s) => s.chronoStop)
+  const chronoWorkAccumMs = useShiftStore((s) => s.chronoWorkAccumMs)
 
   const colors = currentActivity ? getColors(currentActivity.color) : null
 
   const [confirmReset, setConfirmReset] = useState(false)
 
   // Idle (aşım) state. In Pay mode an over-budget break (bütçesi dolmuşken
-  // başlatılan mola) is NOT a real break — it counts as aşım while it runs.
+  // başlatılan mola) NOT a real break — it counts as aşım while it runs.
   const overBudgetBreak = mode === 'pay' && !!runningBreak && runningBreak.overBudget
-  const isIdle = !!activeTemplate && activeTemplate.activities.length > 0
-    && ((!currentActivity && !isBeforeShift && !isShiftFinished) || overBudgetBreak)
+  const isIdle = mode === 'chrono'
+    ? chronoModeFromEngine === 'idle' && chronoWorkAccumMs > 0
+    : (!!activeTemplate && activeTemplate.activities.length > 0
+      && ((!currentActivity && !isBeforeShift && !isShiftFinished) || overBudgetBreak))
 
   // Payback progress
   const paybackPercent = idleLogSeconds > 0
@@ -486,15 +498,17 @@ export default function Dashboard() {
               <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
                 mode === 'pay'
                   ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                  : 'accent-soft accent-border-soft accent-text-soft'
+                  : mode === 'chrono'
+                    ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                    : 'accent-soft accent-border-soft accent-text-soft'
               }`}>
-                {mode === 'pay' ? 'PAY MODU' : 'MYSHIFT MODU'}
+                {mode === 'pay' ? 'PAY MODU' : mode === 'chrono' ? 'KRONO MODU' : 'MYSHIFT MODU'}
               </span>
             </div>
             <h3 className="text-xl font-medium text-slate-200 mt-1">
-              {activeTemplate ? activeTemplate.name : 'Vardiya Atanmadı'}
+              {mode === 'chrono' ? 'Krono Modu' : activeTemplate ? activeTemplate.name : 'Vardiya Atanmadı'}
             </h3>
-            {activeTemplate && activeTemplate.activities.length > 0 && (
+            {mode !== 'chrono' && activeTemplate && activeTemplate.activities.length > 0 && (
               <p className="text-xs text-slate-400 mt-0.5">
                 {durationMode
                   ? `Toplam ${Math.round(durationTargetSecs / 60)} dk • Çalışılan ${formatRemaining(payWorkSecs)}`
@@ -509,10 +523,112 @@ export default function Dashboard() {
           {/* Top Info */}
           <div>
             <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">
-              {paybackRunning ? 'MEVCUT AKTİVİTE · PAYBACK' : 'MEVCUT AKTİVİTE'}
+              {mode === 'chrono'
+                ? (isChronoWork ? 'KRONO · ÇALIŞMA' : isChronoBreak ? 'KRONO · MOLA' : 'KRONO · BEKLİYOR')
+                : paybackRunning ? 'MEVCUT AKTİVİTE · PAYBACK' : 'MEVCUT AKTİVİTE'}
             </span>
 
-            {!activeTemplate || activeTemplate.activities.length === 0 ? (
+            {mode === 'chrono' ? (
+              <div className="mt-4">
+                {isChronoWork ? (
+                  <div className="flex items-start gap-4">
+                    <div className="text-5xl p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 shadow-lg shadow-amber-500/10 animate-pulse">⏱️</div>
+                    <div className="flex-1 min-w-0">
+                      <h1 className="text-3xl font-semibold text-white tracking-wide">Çalışma Sayacı</h1>
+                      <p className="text-sm text-slate-400 mt-1">Kronometre çalışıyor — molaya geçmek için butonu kullan.</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1">
+                        <p>
+                          <span className="text-xs text-slate-400">Çalışma:</span>{' '}
+                          <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(chronoWorkSecs)}</span>
+                        </p>
+                        <p>
+                          <span className="text-xs text-slate-400">Mola:</span>{' '}
+                          <span className="font-mono font-semibold text-slate-300 text-lg">{formatRemaining(chronoBreakSecs)}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : isChronoBreak ? (
+                  <div className="flex items-start gap-4">
+                    <div className="text-5xl p-4 rounded-2xl border bg-emerald-500/10 border-emerald-500/30 shadow-lg shadow-emerald-500/10 animate-pulse">☕</div>
+                    <div className="flex-1 min-w-0">
+                      <h1 className="text-3xl font-semibold text-white tracking-wide">Mola Sayacı</h1>
+                      <p className="text-sm text-slate-400 mt-1">Moladasın — molayı bitirip çalışmaya dönebilirsin.</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1">
+                        <p>
+                          <span className="text-xs text-slate-400">Çalışma:</span>{' '}
+                          <span className="font-mono font-semibold text-slate-300 text-lg">{formatRemaining(chronoWorkSecs)}</span>
+                        </p>
+                        <p>
+                          <span className="text-xs text-slate-400">Mola:</span>{' '}
+                          <span className="font-mono font-bold text-emerald-300 text-lg">{formatRemaining(chronoBreakSecs)}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-4">
+                    <div className="text-5xl p-4 rounded-2xl border bg-slate-500/10 border-slate-500/20">⏱️</div>
+                    <div>
+                      <h1 className="text-2xl font-medium text-slate-300">Kronometre Hazır</h1>
+                      <p className="text-sm text-slate-400 mt-1">Çalışmaya başlamak için butona bas. Kronometre saymaya başlayacak.</p>
+                      {chronoWorkSecs > 0 || chronoBreakSecs > 0 ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1">
+                          <p>
+                            <span className="text-xs text-slate-400">Toplam Çalışma:</span>{' '}
+                            <span className="font-mono font-semibold text-slate-300 text-lg">{formatRemaining(chronoWorkSecs)}</span>
+                          </p>
+                          <p>
+                            <span className="text-xs text-slate-400">Toplam Mola:</span>{' '}
+                            <span className="font-mono font-semibold text-slate-300 text-lg">{formatRemaining(chronoBreakSecs)}</span>
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+                <div className="mt-4 flex justify-end gap-2">
+                  {isChronoWork ? (
+                    <>
+                      <button
+                        onClick={chronoStop}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
+                      >
+                        ⏹ Durdur
+                      </button>
+                      <button
+                        onClick={chronoStartBreak}
+                        className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-emerald-500/20"
+                      >
+                        ☕ Mola Başlat
+                      </button>
+                    </>
+                  ) : isChronoBreak ? (
+                    <>
+                      <button
+                        onClick={chronoStop}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
+                      >
+                        ⏹ Durdur
+                      </button>
+                      <button
+                        onClick={chronoStartWork}
+                        className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-amber-500/20"
+                      >
+                        ⏱️ Çalışmaya Dön
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={chronoStartWork}
+                      className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-amber-500/20"
+                    >
+                      ▶ Çalışmaya Başla
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : !activeTemplate || activeTemplate.activities.length === 0 ? (
               <div className="mt-4 flex items-center gap-4">
                 <div className="text-5xl p-4 rounded-2xl border bg-slate-500/10 border-slate-500/20">🚫</div>
                 <div>

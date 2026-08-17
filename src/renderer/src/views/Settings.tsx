@@ -285,7 +285,7 @@ export default function SettingsView() {
           <Row
             icon="⚙️"
             title="Mod"
-            description="MyShift: aktivite şablonlarına göre planlı vardiya. Pay: sabit başlangıç/bitiş saati + günlük mola bütçeleri."
+            description="MyShift: aktivite şablonlarına göre planlı vardiya. Pay: sabit başlangıç/bitiş saati + mola bütçeleri. Krono: manuel kronometre — başlat/duraklat."
             right={
               <div className="flex rounded-lg overflow-hidden border border-white/10 bg-slate-950 flex-shrink-0">
                 <button
@@ -305,6 +305,15 @@ export default function SettingsView() {
                   }`}
                 >
                   Pay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateSettings({ mode: 'chrono' })}
+                  className={`px-3 py-1.5 text-[11px] font-semibold transition-colors border-l border-white/5 ${
+                    settings.mode === 'chrono' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Krono
                 </button>
               </div>
             }
@@ -457,9 +466,55 @@ export default function SettingsView() {
               />
             </>
           )}
-        </Section>
 
-        {/* Startup & Tray */}
+          {settings.mode === 'chrono' && (
+            <>
+              <div className="px-4 py-2.5 bg-white/5 border-b border-white/5">
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Krono Ayarları</p>
+                <p className="text-[9px] text-slate-600 mt-0.5">Manuel kronometre modu — çalışmalar ve molalar butonla başlatılır.</p>
+              </div>
+              <Row
+                icon="⏳"
+                title="Çalışma Hatırlatması (dk)"
+                description="0=kapalı — bu kadar dk aralıksız çalışınca mola hatırlatır."
+                right={
+                  <input
+                    type="number"
+                    min={0}
+                    max={480}
+                    value={settings.chronoWorkReminderMin}
+                    onChange={(e) => updateSettings({ chronoWorkReminderMin: Math.max(0, Math.min(480, parseInt(e.target.value, 10) || 0)) })}
+                    className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500 text-right"
+                  />
+                }
+              />
+              <Row
+                icon="⚠️"
+                title="Mola Hatırlatması (dk)"
+                description="0=kapalı — mola bu kadar dk sürünce uyarır."
+                right={
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <input
+                      type="number"
+                      min={0}
+                      max={480}
+                      value={settings.chronoBreakReminderMin}
+                      onChange={(e) => updateSettings({ chronoBreakReminderMin: Math.max(0, Math.min(480, parseInt(e.target.value, 10) || 0)) })}
+                      className="w-20 bg-slate-950 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500 text-right"
+                    />
+                    <button
+                      onClick={() => playReminderSound()}
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] px-2.5 py-1.5 rounded-lg border border-white/5 font-semibold transition-colors whitespace-nowrap"
+                      title="Hatırlatma sesini dinle"
+                    >
+                      ▶ Ses
+                    </button>
+                  </div>
+                }
+              />
+            </>
+          )}
+        </Section>
         <Section
           icon="🚀"
           title="Başlangıç ve Tepsi"
