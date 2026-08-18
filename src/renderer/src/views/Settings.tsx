@@ -1,48 +1,29 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useShiftStore } from '../stores/useShiftStore'
 import type { Settings } from '../stores/useShiftStore'
 import { playSound, playReminderSound } from '../utils/soundEffects'
+import { useT } from '../i18n/useT'
 
-const MONTH_NAMES = [
-  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-  'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
-]
+const THEMES_SWATCHES: Record<string, string> = {
+  mavi: 'conic-gradient(#0f172a 0 25%, #1e40af 0 50%, #3b82f6 0 75%, #93c5fd 0 100%)',
+  zurut: 'conic-gradient(#0a1f16 0 25%, #065f46 0 50%, #10b981 0 75%, #6ee7b7 0 100%)',
+  turkuaz: 'conic-gradient(#072624 0 25%, #0f766e 0 50%, #14b8a6 0 75%, #5eead4 0 100%)',
+  menekse: 'conic-gradient(#170d2e 0 25%, #6d28d9 0 50%, #8b5cf6 0 75%, #c4b5fd 0 100%)',
+  kiraz: 'conic-gradient(#240d12 0 25%, #be123c 0 50%, #f43f5e 0 75%, #fda4af 0 100%)',
+  kehribar: 'conic-gradient(#241d09 0 25%, #b45309 0 50%, #f59e0b 0 75%, #fcd34d 0 100%)',
+}
+const THEME_KEYS = ['mavi', 'zurut', 'turkuaz', 'menekse', 'kiraz', 'kehribar'] as const
+const THEME_LABEL_KEY: Record<string, string> = {
+  mavi: 'settingsView.themeMidnightBlue',
+  zurut: 'settingsView.themeEmerald',
+  turkuaz: 'settingsView.themeTurquoise',
+  menekse: 'settingsView.themeViolet',
+  kiraz: 'settingsView.themeCherry',
+  kehribar: 'settingsView.themeAmber',
+}
 
-// General themes — keys must match the [data-theme=...] palettes in index.css.
-// Each swatch is a circular conic-gradient showing the theme's tones:
-// base surface -> deep accent -> mid accent -> light accent.
-const THEMES = [
-  {
-    key: 'mavi',
-    label: 'Gece Mavisi',
-    swatch: 'conic-gradient(#0f172a 0 25%, #1e40af 0 50%, #3b82f6 0 75%, #93c5fd 0 100%)'
-  },
-  {
-    key: 'zurut',
-    label: 'Zümrüt',
-    swatch: 'conic-gradient(#0a1f16 0 25%, #065f46 0 50%, #10b981 0 75%, #6ee7b7 0 100%)'
-  },
-  {
-    key: 'turkuaz',
-    label: 'Turkuaz',
-    swatch: 'conic-gradient(#072624 0 25%, #0f766e 0 50%, #14b8a6 0 75%, #5eead4 0 100%)'
-  },
-  {
-    key: 'menekse',
-    label: 'Menekşe',
-    swatch: 'conic-gradient(#170d2e 0 25%, #6d28d9 0 50%, #8b5cf6 0 75%, #c4b5fd 0 100%)'
-  },
-  {
-    key: 'kiraz',
-    label: 'Kiraz',
-    swatch: 'conic-gradient(#240d12 0 25%, #be123c 0 50%, #f43f5e 0 75%, #fda4af 0 100%)'
-  },
-  {
-    key: 'kehribar',
-    label: 'Kehribar',
-    swatch: 'conic-gradient(#241d09 0 25%, #b45309 0 50%, #f59e0b 0 75%, #fcd34d 0 100%)'
-  }
-]
+const MONTH_NAMES_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const MONTH_NAMES_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
 
 // Show only a hint of the saved API key (sk-…abcd) so the user can see whether
 // one is stored without ever printing the secret.
@@ -104,7 +85,11 @@ function Row({ icon, title, description, right }: { icon: string; title: string;
 
 export default function SettingsView() {
   const { settings, updateSettings, clearHistory, factoryReset } = useShiftStore()
+  const { t, language } = useT()
   const api = window.electronAPI
+
+  const MONTH_NAMES = language === 'tr' ? MONTH_NAMES_TR : MONTH_NAMES_EN
+  const THEMES = useMemo(() => THEME_KEYS.map(k => ({ key: k, label: t(THEME_LABEL_KEY[k] as any), swatch: THEMES_SWATCHES[k] })), [language])
 
   // Parse birthday state
   const [bDay, setBDay] = useState(1)
@@ -221,7 +206,7 @@ export default function SettingsView() {
     try {
       setTestResult(await api.ai.test())
     } catch {
-      setTestResult({ ok: false, detail: 'Test isteği iletilemedi (dahili hata).', elapsedMs: 0 })
+      setTestResult({ ok: false, detail: t('settingsView.testError'), elapsedMs: 0 })
     } finally {
       setTesting(false)
     }
@@ -257,21 +242,44 @@ export default function SettingsView() {
             ⚙️
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-slate-100">Uygulama Ayarları</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Açılış, tepsi ve bildirim tercihlerinizi yönetin.</p>
+            <h2 className="text-xl font-semibold text-slate-100">{t('settingsView.pageTitle')}</h2>
+            <p className="text-xs text-slate-400 mt-0.5">{t('settingsView.pageSubtitle')}</p>
           </div>
         </div>
+
+        {/* Dil */}
+        <Section
+          icon="🌐"
+          title={t('settings.language')}
+          description={t('settings.languageDesc')}
+        >
+          <Row
+            icon="🌐"
+            title={t('settings.language')}
+            description={t('settings.languageDesc')}
+            right={
+              <select
+                value={settings.language}
+                onChange={(e) => updateSettings({ language: e.target.value as 'en' | 'tr' })}
+                className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border cursor-pointer"
+              >
+                <option value="en">English</option>
+                <option value="tr">Türkçe</option>
+              </select>
+            }
+          />
+        </Section>
 
         {/* Görünüm */}
         <Section
           icon="🎨"
-          title="Görünüm"
-          description="Genel temayı seçin — uygulamanın tamamı (arka plan, kartlar, yazılar) bu renge bürünür."
+          title={t('settings.appearance')}
+          description={t('settingsView.appearanceHint')}
         >
           <Row
             icon="🌈"
-            title="Tema"
-            description="Uygulamanın ana teması — arka plan, kartlar, butonlar ve tüm metin renkleri uyum sağlar."
+            title={t('settings.theme')}
+            description={t('settings.themeDesc')}
             right={
               <div className="flex items-center gap-2.5 flex-wrap flex-shrink-0 justify-end">
                 {THEMES.map((t) => (
@@ -298,13 +306,13 @@ export default function SettingsView() {
         {/* Saat Görünümü */}
         <Section
           icon="🕐"
-          title="Saat Görünümü"
-          description="Dashboard'daki saat fontunu ve görünümünü özelleştirin."
+          title={t('settingsView.clockView')}
+          description={t('settingsView.clockViewDesc')}
         >
           <Row
             icon="✏️"
-            title="Saat Fontu"
-            description="Dashboard'daki dijital saatin font stili."
+            title={t('settings.clockFont')}
+            description={t('settingsView.clockFontDesc')}
             right={
               <select
                 value={settings.clockFont}
@@ -325,13 +333,13 @@ export default function SettingsView() {
         {/* Çalışma Modu */}
         <Section
           icon="🗓️"
-          title="Çalışma Modu"
-          description="Günlük vardiyanın nasıl işlendiğini seçin"
+          title={t('settingsView.workMode')}
+          description={t('settingsView.workModeDesc')}
         >
           <Row
             icon="⚙️"
-            title="Mod"
-            description="MyShift: aktivite şablonlarına göre planlı vardiya. Pay: sabit başlangıç/bitiş saati + mola bütçeleri. Krono: manuel kronometre — başlat/duraklat."
+            title={t('settingsView.mode')}
+            description={t('settingsView.modeDesc')}
             right={
               <div className="flex rounded-lg overflow-hidden border border-white/10 bg-slate-950 flex-shrink-0">
                 <button
@@ -369,8 +377,8 @@ export default function SettingsView() {
             <>
               <Row
                 icon="🕐"
-                title="Vardiya Tipi"
-                description="Saat Aralığı: sabit başlangıç/bitiş saati. Toplam Süre: bugün 'ödeyeceğin' toplam çalışma dakikası — çalıştıkça kalan azalır."
+                title={t('settingsView.shiftType')}
+                description={t('settingsView.shiftTypeDesc')}
                 right={
                   <div className="flex rounded-lg overflow-hidden border border-white/10 bg-slate-950 flex-shrink-0">
                     <button
@@ -380,7 +388,7 @@ export default function SettingsView() {
                         settings.payTargetMode === 'window' ? 'accent-solid-strong text-white' : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      Saat Aralığı
+                      {t('settingsView.timeWindow')}
                     </button>
                     <button
                       type="button"
@@ -389,7 +397,7 @@ export default function SettingsView() {
                         settings.payTargetMode === 'duration' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      Toplam Süre
+                      {t('settingsView.totalTime')}
                     </button>
                   </div>
                 }
@@ -398,8 +406,8 @@ export default function SettingsView() {
               {settings.payTargetMode === 'window' ? (
                 <Row
                   icon="🌅"
-                  title="Pay Vardiyası"
-                  description="Sabit mesai başlangıç ve bitiş saati."
+                  title={t('settingsView.payShiftTitle')}
+                  description={t('settingsView.payShiftDesc')}
                   right={
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       <input
@@ -421,8 +429,8 @@ export default function SettingsView() {
               ) : (
                 <Row
                   icon="⏱️"
-                  title="Ödenecek Süre"
-                  description="Bugün tamamlaman gereken toplam çalışma süresi. Çalıştıkça kalan azalır; molalar sayılmaz."
+                  title={t('settingsView.durationToPay')}
+                  description={t('settingsView.durationToPayDesc')}
                   right={
                     <input
                       type="number"
@@ -437,8 +445,8 @@ export default function SettingsView() {
               )}
               <Row
                 icon="☕"
-                title="Kısa Mola Bütçesi"
-                description="Çay, kahve ve ihtiyaç molaları için günlük toplam süre (dakika)."
+                title={t('settingsView.shortBreakBudget')}
+                description={t('settingsView.shortBreakBudgetDesc')}
                 right={
                   <input
                     type="number"
@@ -452,8 +460,8 @@ export default function SettingsView() {
               />
               <Row
                 icon="🍽️"
-                title="Yemek Molası Bütçesi"
-                description="Kahvaltı, öğle ve akşam yemeği molaları için günlük toplam süre (dakika)."
+                title={t('settingsView.mealBreakBudget')}
+                description={t('settingsView.mealBreakBudgetDesc')}
                 right={
                   <input
                     type="number"
@@ -467,14 +475,14 @@ export default function SettingsView() {
               />
 
               <div className="px-4 py-2.5 bg-white/5 border-b border-white/5">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Mola Hatırlatması</p>
-                <p className="text-[9px] text-slate-600 mt-0.5">Uyarı 1 dakika görünür ve farklı bir ses çalar.</p>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{t('settingsView.breakReminderHeader')}</p>
+                <p className="text-[9px] text-slate-600 mt-0.5">{t('settingsView.breakReminderHint')}</p>
               </div>
 
               <Row
                 icon="⏳"
-                title="Tahmini Shift Süresi (dk)"
-                description="Örn. 50 — bu süre aralıksız çalışınca 'mola yapmadın' uyarısı. (0 = kapalı)"
+                title={t('settingsView.workStretchReminder')}
+                description={t('settingsView.workStretchReminderDesc')}
                 right={
                   <input
                     type="number"
@@ -488,8 +496,8 @@ export default function SettingsView() {
               />
               <Row
                 icon="⚠️"
-                title="Tahmini Kısa Mola Süresi (dk)"
-                description="Örn. 15 — planladığın molayı aşınca 'başka molandan yiyorsun' uyarısı. (0 = kapalı)"
+                title={t('settingsView.breakOverrunReminder')}
+                description={t('settingsView.breakOverrunReminderDesc')}
                 right={
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <input
@@ -503,9 +511,9 @@ export default function SettingsView() {
                     <button
                       onClick={() => playReminderSound()}
                       className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] px-2.5 py-1.5 rounded-lg border border-white/5 font-semibold transition-colors whitespace-nowrap"
-                      title="Hatırlatma sesini dinle"
+                      title={t('settingsView.listenReminder')}
                     >
-                      ▶ Ses
+                      ▶ {t('settingsView.sound')}
                     </button>
                   </div>
                 }
@@ -516,13 +524,13 @@ export default function SettingsView() {
           {settings.mode === 'chrono' && (
             <>
               <div className="px-4 py-2.5 bg-white/5 border-b border-white/5">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Krono Ayarları</p>
-                <p className="text-[9px] text-slate-600 mt-0.5">Manuel kronometre modu — çalışmalar ve molalar butonla başlatılır.</p>
+                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{t('settingsView.chronoSettings')}</p>
+                <p className="text-[9px] text-slate-600 mt-0.5">{t('settingsView.chronoSettingsDesc')}</p>
               </div>
               <Row
                 icon="⏳"
-                title="Çalışma Hatırlatması (dk)"
-                description="0=kapalı — bu kadar dk aralıksız çalışınca mola hatırlatır."
+                title={t('settingsView.chronoWorkReminder')}
+                description={t('settingsView.chronoWorkReminderDesc')}
                 right={
                   <input
                     type="number"
@@ -536,8 +544,8 @@ export default function SettingsView() {
               />
               <Row
                 icon="⚠️"
-                title="Mola Hatırlatması (dk)"
-                description="0=kapalı — mola bu kadar dk sürünce uyarır."
+                title={t('settingsView.chronoBreakReminder')}
+                description={t('settingsView.chronoBreakReminderDesc')}
                 right={
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <input
@@ -551,9 +559,9 @@ export default function SettingsView() {
                     <button
                       onClick={() => playReminderSound()}
                       className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] px-2.5 py-1.5 rounded-lg border border-white/5 font-semibold transition-colors whitespace-nowrap"
-                      title="Hatırlatma sesini dinle"
+                      title={t('settingsView.listenReminder')}
                     >
-                      ▶ Ses
+                      ▶ {t('settingsView.sound')}
                     </button>
                   </div>
                 }
@@ -563,13 +571,13 @@ export default function SettingsView() {
         </Section>
         <Section
           icon="🚀"
-          title="Başlangıç ve Tepsi"
-          description="Uygulamanın açılış ve sistem tepsi davranışı"
+          title={t('settingsView.startupTray')}
+          description={t('settingsView.startupTrayDesc')}
         >
           <Row
             icon="🖥️"
-            title="Windows ile Birlikte Başlat"
-            description="Bilgisayarınız açıldığında MyShift otomatik olarak başlasın."
+            title={t('settingsView.launchWithWindows')}
+            description={t('settingsView.launchWithWindowsDesc')}
             right={
               <Toggle
                 checked={settings.launchWithWindows}
@@ -579,8 +587,8 @@ export default function SettingsView() {
           />
           <Row
             icon="📉"
-            title="Küçültülmüş Olarak Başlat"
-            description="Ekranda görünmeden doğrudan sistem tepsisine küçülerek başlasın."
+            title={t('settingsView.startMinimized')}
+            description={t('settingsView.startMinimizedDesc')}
             right={
               <Toggle
                 checked={settings.startMinimized}
@@ -591,8 +599,8 @@ export default function SettingsView() {
           />
           <Row
             icon="🌱"
-            title="Açılışta Göster, Sonra Tepsiye Küçült"
-            description="Kısa süre görünür, etkileşime girilmezse tepsiye küçülür."
+            title={t('settingsView.autoMinimize')}
+            description={t('settingsView.autoMinimizeDesc')}
             right={
               <Toggle
                 checked={settings.autoMinimizeToTray}
@@ -603,8 +611,8 @@ export default function SettingsView() {
           />
           <Row
             icon="🚪"
-            title="Kapatıldığında Tepsiye Küçült"
-            description="Kapat butonu uygulamayı bitirmez, arka planda çalışmaya devam eder."
+            title={t('settingsView.closeToTray')}
+            description={t('settingsView.closeToTrayDesc')}
             right={
               <Toggle
                 checked={settings.minimizeToTray}
@@ -617,13 +625,13 @@ export default function SettingsView() {
         {/* Notifications */}
         <Section
           icon="🔔"
-          title="Bildirimler"
-          description="Genel vardiya geçişleri için varsayılan ses"
+          title={t('settingsView.notificationsTitle')}
+          description={t('settingsView.notificationsDesc')}
         >
           <Row
             icon="🎵"
-            title="Varsayılan Bildirim Sesi"
-            description="Vardiya başlangıcı ve genel geçişlerde çalınacak ses."
+            title={t('settingsView.defaultSound')}
+            description={t('settingsView.defaultSoundDesc')}
             right={
               <div className="flex items-center gap-2">
                 <select
@@ -631,20 +639,20 @@ export default function SettingsView() {
                   onChange={(e) => updateSettings({ defaultNotificationSound: e.target.value })}
                   className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border cursor-pointer"
                 >
-                  <option value="default">Varsayılan (Yükselen Üçlü)</option>
-                  <option value="bell">Çan (Yumuşak Tını)</option>
-                  <option value="digital">Dijital (Çift Bıp)</option>
-                  <option value="soft">Yumuşak (İkili Melodi)</option>
-                  <option value="elegant">Zarif (Üçlü Azalan)</option>
-                  <option value="urgent">Acil (Çift Uyarı)</option>
-                  <option value="minimal">Minimal (Tek Tık)</option>
-                  <option value="none">Sessiz</option>
+                  <option value="default">{t('settingsView.soundDefault')}</option>
+                  <option value="bell">{t('settingsView.soundBell')}</option>
+                  <option value="digital">{t('settingsView.soundDigital')}</option>
+                  <option value="soft">{t('settingsView.soundSoft')}</option>
+                  <option value="elegant">{t('settingsView.soundElegant')}</option>
+                  <option value="urgent">{t('settingsView.soundUrgent')}</option>
+                  <option value="minimal">{t('settingsView.soundMinimal')}</option>
+                  <option value="none">{t('settingsView.soundMuted')}</option>
                 </select>
                 <button
                   onClick={handleTestSound}
                   className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] px-3 py-1.5 rounded-lg border border-white/5 font-semibold transition-colors whitespace-nowrap"
                 >
-                  ▶ Test Et
+                  ▶ {t('settingsView.testSound')}
                 </button>
               </div>
             }
@@ -654,23 +662,23 @@ export default function SettingsView() {
         {/* Comments / AI */}
         <Section
           icon="💬"
-          title="Yorumlar"
-          description="Saat altındaki tek satırlık yorumu kim yazsın?"
+          title={t('settingsView.comments')}
+          description={t('settingsView.commentsDesc')}
         >
           <Row
             icon="🧠"
-            title="Yorum Kaynağı"
-            description="Ollama (yerel) veya OpenAI uyumlu bir API kullanılabilir; yoksa yerleşik motor devreye girer. AI ayarlıyken yorumlar gerçek zamanlı davranışınıza göre yazılır."
+            title={t('settingsView.commentSource')}
+            description={t('settingsView.commentSourceDesc')}
             right={
               <select
                 value={settings.commentProvider}
                 onChange={(e) => handleProviderChange(e.target.value as Settings['commentProvider'])}
                 className="bg-slate-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:accent-border cursor-pointer"
               >
-                <option value="offline">Yerleşik Motor</option>
-                <option value="ollama">Ollama (Yerel)</option>
-                <option value="openai">OpenAI Uyumlu API</option>
-                <option value="openrouter">OpenRouter (Ücretsiz Modeller)</option>
+                <option value="offline">{t('settingsView.commentOffline')}</option>
+                <option value="ollama">{t('settingsView.commentOllama')}</option>
+                <option value="openai">{t('settingsView.commentOpenai')}</option>
+                <option value="openrouter">{t('settingsView.commentOpenrouter')}</option>
               </select>
             }
           />
@@ -680,8 +688,8 @@ export default function SettingsView() {
                 <>
                   <Row
                     icon="🔗"
-                    title="Sunucu Adresi (Base URL)"
-                    description="Ollama varsayılanı: http://127.0.0.1:11434"
+                    title={t('settingsView.serverUrl')}
+                    description={t('settingsView.serverUrlOllamaDesc')}
                     right={
                       <input
                         type="text"
@@ -694,8 +702,8 @@ export default function SettingsView() {
                   />
                   <Row
                     icon="📦"
-                    title="Model"
-                    description="Örn: qwen2.5, llama3.1"
+                    title={t('settingsView.model')}
+                    description={t('settingsView.modelOllamaDesc')}
                     right={
                       <input
                         type="text"
@@ -714,9 +722,9 @@ export default function SettingsView() {
                     <div className="flex items-start gap-3 min-w-0">
                       <span className="text-base flex-shrink-0 mt-0.5">🔑</span>
                       <div className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-slate-200">API Anahtarı</span>
+                        <span className="block text-sm font-medium text-slate-200">{t('settingsView.apiKey')}</span>
                         <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                          Anahtarı yapıştırıp <span className="text-slate-300">Kaydet</span>'e basın. Yalnızca bu bilgisayarda saklanır; yorum üretirken doğrudan sağlayıcıya gider.
+                          {t('settingsView.apiKeyDesc')}
                         </p>
                       </div>
                     </div>
@@ -732,13 +740,13 @@ export default function SettingsView() {
                         onClick={handleSaveApiKey}
                         className="accent-solid-strong hover:accent-solid text-white text-[11px] px-3 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap"
                       >
-                        {keySavedFlash ? '✓ Kaydedildi' : '💾 Kaydet'}
+                        {keySavedFlash ? t('settingsView.apiKeySaved') : t('settingsView.apiKeySave')}
                       </button>
                     </div>
                     <p className="text-[10px] text-slate-500 mt-2">
                       {settings.commentApiKey
-                        ? `✅ Kayıtlı anahtar: ${maskKey(settings.commentApiKey)}`
-                        : '⚠️ Henüz kayıtlı anahtar yok — yukarıdaki alana yapıştırıp Kaydet\'e basın.'}
+                        ? t('settingsView.apiKeyStored', { key: maskKey(settings.commentApiKey) })
+                        : t('settingsView.apiKeyNone')}
                     </p>
                   </div>
 
@@ -749,15 +757,15 @@ export default function SettingsView() {
                           onClick={() => setShowAdvanced(v => !v)}
                           className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
                         >
-                          {showAdvanced ? '▾ Gelişmiş Ayarları Gizle' : '▸ Gelişmiş: Özel Sağlayıcı / Model Kullan'}
+                          {showAdvanced ? t('settingsView.showAdvancedAdvanced') : t('settingsView.showAdvancedCollapsed')}
                         </button>
                       </div>
                       {showAdvanced && (
                         <>
                           <Row
                             icon="🔗"
-                            title="Sunucu Adresi (Base URL)"
-                            description="OpenAI uyumlu başka bir sağlayıcı (Groq vb.) kullanmak için değiştirin."
+                            title={t('settingsView.serverUrl')}
+                            description={t('settingsView.serverUrlOpenaiDesc')}
                             right={
                               <input
                                 type="text"
@@ -770,8 +778,8 @@ export default function SettingsView() {
                           />
                           <Row
                             icon="📦"
-                            title="Model"
-                            description="Örn: gpt-4o-mini, gpt-4.1-mini"
+                            title={t('settingsView.model')}
+                            description={t('settingsView.modelOpenaiDesc')}
                             right={
                               <input
                                 type="text"
@@ -791,17 +799,17 @@ export default function SettingsView() {
                       <div className="flex items-start gap-3 min-w-0">
                         <span className="text-base flex-shrink-0 mt-0.5">📦</span>
                         <div className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium text-slate-200">Model (güncel ücretsizler)</span>
-                          <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                            OpenRouter'daki <span className="text-slate-300">:free</span> modeller anlık listelenir. Ücretsiz modeller zamanla eklenip kaldırılabilir — listeden seçmeniz yeterli.
+                        <span className="block text-sm font-medium text-slate-200">{t('settingsView.openrouterModels')}</span>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                          {t('settingsView.openrouterModelsDesc')}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 mt-3">
                         {modelsLoading ? (
-                          <div className="flex-1 text-xs text-slate-400 py-2 animate-pulse">Ücretsiz modeller yükleniyor…</div>
+                          <div className="flex-1 text-xs text-slate-400 py-2 animate-pulse">{t('settingsView.openrouterLoading')}</div>
                         ) : modelsError ? (
-                          <div className="flex-1 text-xs text-rose-400 py-2">Liste alınamadı — internet bağlantınızı kontrol edin.</div>
+                          <div className="flex-1 text-xs text-rose-400 py-2">{t('settingsView.openrouterError')}</div>
                         ) : openRouterModels && openRouterModels.length > 0 ? (
                           <select
                             value={settings.commentModel}
@@ -815,7 +823,7 @@ export default function SettingsView() {
                             ))}
                           </select>
                         ) : (
-                          <div className="flex-1 text-xs text-slate-500 py-2">Liste boş — bir süre sonra tekrar deneyin.</div>
+                          <div className="flex-1 text-xs text-slate-500 py-2">{t('settingsView.openrouterEmpty')}</div>
                         )}
                         <button
                           onClick={() => void loadOpenRouterModels()}
@@ -823,13 +831,13 @@ export default function SettingsView() {
                           className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-[11px] px-3 py-2 rounded-lg border border-white/5 font-semibold transition-colors whitespace-nowrap"
                           title="Listeyi yenile"
                         >
-                          ↻ Yenile
+                          {t('settingsView.refresh')}
                         </button>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-2">
                         {settings.commentApiKey
-                          ? '✅ Anahtar kayıtlı — aşağıdan test edebilirsiniz.'
-                          : '⚠️ Önce yukarıdaki alana OpenRouter anahtarınızı yapıştırıp Kaydet\'e basın.'}
+                          ? t('settingsView.openrouterKeySaved')
+                          : t('settingsView.openrouterKeyNone')}
                       </p>
                     </div>
                   )}
@@ -839,9 +847,9 @@ export default function SettingsView() {
               <div className="px-4 py-3 border-b border-white/5 flex flex-col gap-2.5">
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
-                    <span className="block text-sm font-medium text-slate-200">🔬 AI Bağlantısını Test Et</span>
+                    <span className="block text-sm font-medium text-slate-200">{t('settingsView.testAi')}</span>
                     <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                      Gerçek bir istek gönderilir: anahtar geçerli mi, sunucu erişilebilir mi, model yanıt veriyor mu — anında görürsünüz.
+                      {t('settingsView.testAiDesc')}
                     </p>
                   </div>
                   <button
@@ -849,12 +857,12 @@ export default function SettingsView() {
                     disabled={testing}
                     className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-[11px] px-3 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap flex-shrink-0"
                   >
-                    {testing ? 'Test Ediliyor…' : '▶ Test Et'}
+                    {testing ? t('settingsView.testingLabel') : t('settingsView.testBtn')}
                   </button>
                 </div>
 
                 {testing && (
-                  <p className="text-[10px] text-slate-400 animate-pulse">İstek gönderiliyor, yanıt bekleniyor…</p>
+                  <p className="text-[10px] text-slate-400 animate-pulse">{t('settingsView.testSending')}</p>
                 )}
 
                 {!testing && testResult && (
@@ -863,25 +871,24 @@ export default function SettingsView() {
                       ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                       : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
                   }`}>
-                    <span className="font-semibold">{testResult.ok ? '✓ Çalışıyor' : '✗ Sorun var'}</span>
+                    <span className="font-semibold">{testResult.ok ? t('settingsView.testWorking') : t('settingsView.testFailed')}</span>
                     <span className="text-slate-400"> — {testResult.detail}</span>
                     {testResult.elapsedMs > 0 && (
-                      <span className="block text-[9px] text-slate-500 mt-0.5 font-mono">Yanıt süresi: {testResult.elapsedMs} ms</span>
+                      <span className="block text-[9px] text-slate-500 mt-0.5 font-mono">{t('settingsView.testResponseTime', { ms: testResult.elapsedMs })}</span>
                     )}
                   </div>
                 )}
 
                 {!testing && !testResult && (
                   <p className="text-[10px] text-slate-600">
-                    Henüz test yapılmadı. Sorun varsa ayrıntı burada görünür.
+                    {t('settingsView.testNotRun')}
                   </p>
                 )}
               </div>
 
               <div className="px-4 py-3 border-t border-white/5">
                 <p className="text-[10px] text-slate-500 leading-relaxed">
-                  Not: Bu ayar açıkken yorum bağlamı (aktif aktivite, açık uygulama, şarkı başlığı vb.)
-                  seçtiğiniz sağlayıcıya gönderilir. AI yanıt vermezse yerleşik motor devreye girer.
+                  {t('settingsView.aiNote')}
                 </p>
               </div>
             </>
@@ -891,13 +898,13 @@ export default function SettingsView() {
         {/* Birthday */}
         <Section
           icon="🎂"
-          title="Tatil"
-          description="Özel günlerde otomatik şablon seçimi"
+          title={t('settingsView.holiday')}
+          description={t('settingsView.holidayDesc')}
         >
           <Row
             icon="📅"
-            title="Doğum Günü Tatili"
-            description='"Doğum Günü" veya "Birthday" isimli şablon otomatik etkinleşir.'
+            title={t('settingsView.birthdayTemplate')}
+            description={t('settingsView.birthdayDesc')}
             right={
               <div className="flex gap-1.5">
                 <select
@@ -926,12 +933,12 @@ export default function SettingsView() {
         {/* Tüm Veriler — Dışa / İçe Aktar */}
         <Section
           icon="📦"
-          title="Tüm Verileri İçe / Dışa Aktar"
-          description="Şablonlar, ayarlar, tema, geçiş kayıtları, gözlem verileri, AI profili — her şey tek dosyada"
+          title={t('settingsView.dataExportImport')}
+          description={t('settingsView.dataExportImportDesc')}
         >
           <div className="p-4 flex flex-col gap-4">
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              Tüm verileriniz (vardiya şablonları, ayarlar, tema seçimi, geçmiş kayıtları, gözlem JSONL'leri, AI profil notları) tek bir JSON dosyasında dışa aktarılır. Aynı dosyayı başka bir bilgisayara aktararak veya yedekleyerek tüm ayarlarınızı koruyabilirsiniz.
+              {t('settingsView.dataExportImportLongDesc')}
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
               <button
@@ -939,30 +946,30 @@ export default function SettingsView() {
                   if (!api?.data) return
                   const r = await api.data.export()
                   if (r.ok) {
-                    setExportFlash('Dışa aktarıldı')
+                    setExportFlash(t('settingsView.dataExported'))
                     flashTimer(() => setExportFlash(''), 3000)
                   }
                 }}
                 className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5"
               >
-                📤 Dışa Aktar
+                {t('settingsView.dataExportBtn')}
               </button>
               <button
                 onClick={async () => {
                   if (!api?.data) return
-                  if (!window.confirm('Mevcut tüm veriler, içe aktarılacak dosyadaki verilerle değiştirilecek. Devam edilsin mi?')) return
+                  if (!window.confirm(t('settingsView.dataImportConfirm'))) return
                   setImporting(true)
                   setImportFlash('')
                   try {
                     const r = await api.data.import()
                     if (r.ok) {
                       const parts: string[] = []
-                      if (r.storeKeys) parts.push(`${r.storeKeys} ayar`)
-                      if (r.notes) parts.push(`${r.notes} profil notu`)
-                      if (r.files) parts.push(`${r.files} gözlem dosyası`)
-                      setImportFlash(parts.length > 0 ? `İçe aktarıldı: ${parts.join(', ')}` : 'İçe aktarıldı')
+                      if (r.storeKeys) parts.push(`${r.storeKeys} ${t('settingsView.dataSettingsLabel')}`)
+                      if (r.notes) parts.push(`${r.notes} ${t('settingsView.dataNotesLabel')}`)
+                      if (r.files) parts.push(`${r.files} ${t('settingsView.dataFilesLabel')}`)
+                      setImportFlash(parts.length > 0 ? t('settingsView.dataImported', { parts: parts.join(', ') }) : t('settingsView.dataImportError'))
                     } else {
-                      setImportFlash(r.error || 'İçe aktarma başarısız')
+                      setImportFlash(r.error || t('settingsView.dataImportError'))
                     }
                   } finally {
                     setImporting(false)
@@ -972,7 +979,7 @@ export default function SettingsView() {
                 disabled={importing}
                 className="bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-300 text-xs font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 disabled:opacity-40"
               >
-                {importing ? '⏳ İçe aktarılıyor…' : '📥 İçe Aktar'}
+                {importing ? t('settingsView.dataImporting') : t('settingsView.dataImportBtn')}
               </button>
             </div>
             {(exportFlash || importFlash) && (
@@ -984,20 +991,20 @@ export default function SettingsView() {
         {/* Özel Widget — Hava Durumu */}
         <Section
           icon="🌤️"
-          title="Hava Durumu Widget'ı"
-          description="Dashboard'a canlı hava durumu widget'ı ekle"
+          title={t('settingsView.weatherWidget')}
+          description={t('settingsView.weatherWidgetDesc')}
         >
           <Row
             icon="📡"
-            title="Widget Etkin"
-            description="Hava durumu widget'ını dashboard'da göster"
+            title={t('settingsView.widgetEnabled')}
+            description={t('settingsView.widgetEnabledDesc')}
             right={<Toggle checked={settings.widgetEnabled} onChange={(v) => updateSettings({ widgetEnabled: v })} />}
           />
           {settings.widgetEnabled && (
             <div className="p-4 space-y-4">
               {/* Quick-select popular cities */}
               <div>
-                <p className="text-xs font-medium text-slate-400 mb-2">Popüler Şehirler</p>
+                <p className="text-xs font-medium text-slate-400 mb-2">{t('settingsView.popularCities')}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {[
                     { name: 'Kızıltepe', lat: 37.0744, lon: 40.2928, district: 'Mardin' },
@@ -1039,7 +1046,7 @@ export default function SettingsView() {
 
               {/* Custom search */}
               <div>
-                <p className="text-xs font-medium text-slate-400 mb-2">veya Özel Şehir Ara</p>
+                <p className="text-xs font-medium text-slate-400 mb-2">{t('settingsView.customCitySearch')}</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
@@ -1049,7 +1056,7 @@ export default function SettingsView() {
                       if (e.key === 'Enter' && geoQuery.trim().length >= 2) {
                         setGeoSearching(true)
                         try {
-                          const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(geoQuery.trim())}&count=8&language=tr&format=json`)
+                          const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(geoQuery.trim())}&count=8&language=${language}&format=json`)
                           const data = await res.json()
                           const mapped = (data.results ?? []).map((r: Record<string, unknown>) => ({
                             name: r.name as string,
@@ -1063,7 +1070,7 @@ export default function SettingsView() {
                         setGeoSearching(false)
                       }
                     }}
-                    placeholder="Şehir adı yazın… (Enter)"
+                    placeholder={t('settings.searchCity')}
                     className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 outline-none focus:border-white/20 transition-colors"
                   />
                   <button
@@ -1071,7 +1078,7 @@ export default function SettingsView() {
                       if (geoQuery.trim().length < 2) return
                       setGeoSearching(true)
                       try {
-                        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(geoQuery.trim())}&count=8&language=tr&format=json`)
+                        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(geoQuery.trim())}&count=8&language=${language}&format=json`)
                         const data = await res.json()
                         const mapped = (data.results ?? []).map((r: Record<string, unknown>) => ({
                           name: r.name as string,
@@ -1094,7 +1101,7 @@ export default function SettingsView() {
               {/* Search results */}
               {geoResults.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[10px] text-slate-500">Sonuçlar — birine tıklayın:</p>
+                  <p className="text-[10px] text-slate-500">{t('settingsView.searchResultsHint')}</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                     {geoResults.map((r, i) => (
                       <button
@@ -1147,40 +1154,40 @@ export default function SettingsView() {
           <div className="flex items-center gap-2 mb-4">
             <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-rose-500/10 border border-rose-500/20 text-sm">⚠️</span>
             <div>
-              <h3 className="text-sm font-semibold text-rose-300">Tehlikeli Bölge</h3>
-              <p className="text-[10px] text-rose-400/50">Bu işlemler geri alınamaz — dikkatli kullanın</p>
+              <h3 className="text-sm font-semibold text-rose-300">{t('settingsView.dangerZone')}</h3>
+              <p className="text-[10px] text-rose-400/50">{t('settingsView.dangerZoneDesc')}</p>
             </div>
           </div>
           <div className="flex flex-col rounded-xl border border-rose-500/15 bg-rose-500/3">
             {/* Geçmişi Sil */}
             <div className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-rose-500/10">
               <div>
-                <p className="text-sm font-medium text-slate-300">Geçmişi Temizle</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Tüm günlük kayıtlar ve tamamlanan vardiyalar silinir. Bugünün kaydı korunur.</p>
+                <p className="text-sm font-medium text-slate-300">{t('settings.clearHistory')}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">{t('settings.clearHistoryDesc')}</p>
               </div>
               <button
                 onClick={() => {
-                  if (window.confirm('Geçmiş tamamen silinecek. Bu işlem geri alınamaz. Devam edilsin mi?')) {
+                  if (window.confirm(t('settings.clearHistoryConfirm'))) {
                     clearHistory()
                   }
                 }}
                 className="bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5"
               >
-                Geçmişi Temizle
+                {t('settings.clearHistory')}
               </button>
             </div>
             {/* Fabrika Ayarlarına Dön */}
             <div className="p-4 space-y-3">
               <div>
-                <p className="text-sm font-medium text-slate-300">Fabrika Ayarlarına Dön</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Tüm şablonlar, ayarlar, günlük kayıtlar, mola geçmişi ve yapay zeka profili silinir. Uygulama varsayılanlarıyla yeniden başlar.</p>
+                <p className="text-sm font-medium text-slate-300">{t('settings.factoryReset')}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">{t('settings.factoryResetDesc')}</p>
               </div>
               <div className="flex items-center gap-2">
                 <input
                   type="text"
                   value={resetDraft}
                   onChange={(e) => setResetDraft(e.target.value)}
-                  placeholder='Onaylamak için "reset" yazın'
+                  placeholder={t('settings.factoryResetPlaceholder')}
                   className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 outline-none focus:border-rose-500/50 transition-colors"
                 />
                 <button
@@ -1195,7 +1202,7 @@ export default function SettingsView() {
                       : 'bg-white/5 border border-white/10 text-slate-600 cursor-not-allowed'
                   }`}
                 >
-                  {resetting ? 'Sıfırlanıyor…' : 'Sıfırla'}
+                  {resetting ? t('settings.resetting') : t('settings.reset')}
                 </button>
               </div>
             </div>
@@ -1204,8 +1211,8 @@ export default function SettingsView() {
 
         {/* Footer */}
         <div className="border-t border-white/5 pt-4 text-center">
-          <span className="text-[10px] text-slate-600 block">MyShift v1.0.0 • Çevrimdışı Kişisel Vardiya Sistemi</span>
-          <span className="text-[10px] text-slate-600 block mt-0.5">Windows 10/11 Fluent Design</span>
+          <span className="text-[10px] text-slate-600 block">{t('settingsView.footerApp')}</span>
+          <span className="text-[10px] text-slate-600 block mt-0.5">{t('settingsView.footerDesign')}</span>
         </div>
       </div>
     </div>
