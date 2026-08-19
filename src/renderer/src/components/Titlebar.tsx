@@ -1,6 +1,8 @@
 import { useLiveShiftEngine, formatRemaining } from '../hooks/useLiveShiftEngine'
+import { useT } from '../i18n/useT'
 
 export default function Titlebar() {
+  const { t } = useT()
   const {
     currentActivity,
     isBeforeShift,
@@ -20,20 +22,20 @@ export default function Titlebar() {
   // Build status pill
   let pill: { label: string; color: string } | null = null
   if (isShiftFinished) {
-    pill = { label: '✔ Tamamlandı', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' }
+    pill = { label: t('dashboardUI.pillCompleted'), color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' }
   } else if (paybackRunning) {
     pill = { label: `⏳ Payback · ${formatRemaining(idleSeconds)}`, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' }
   } else if (isOvertime) {
-    pill = { label: '⏰ Aşım', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' }
+    pill = { label: t('dashboardUI.pillOvertime'), color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' }
   } else if (isIdle && idleSeconds > 0) {
-    pill = { label: `📈 Aşım · ${formatRemaining(idleSeconds)}`, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' }
+    pill = { label: t('dashboardUI.pillOvertimeTime', { time: formatRemaining(idleSeconds) }), color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' }
   } else if (currentActivity) {
     pill = {
       label: `${currentActivity.icon} ${currentActivity.name} · ${remainingTimeStr}`,
       color: 'accent-text-soft accent-soft accent-border-soft'
     }
   } else if (isBeforeShift && activeTemplate) {
-    pill = { label: '💤 Vardiya Bekleniyor', color: 'text-slate-400 bg-white/5 border-white/10' }
+    pill = { label: t('dashboardUI.pillWaiting'), color: 'text-slate-400 bg-white/5 border-white/10' }
   }
 
   return (
@@ -45,7 +47,7 @@ export default function Titlebar() {
       <div className="flex items-center gap-2.5">
         <span className="text-sm font-semibold text-slate-200 tracking-wide">MyShift</span>
         <span className="text-slate-700 text-xs">|</span>
-        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">Vardiya Sistemi</span>
+        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">{t('dashboardUI.shiftSystem')}</span>
       </div>
 
       {/* Center: Live activity status pill */}
@@ -66,21 +68,21 @@ export default function Titlebar() {
         <button
           onClick={handleMinimize}
           className="w-8 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-all text-sm"
-          title="Küçült"
+          title={t('dashboardUI.minimize')}
         >
           ─
         </button>
         <button
           onClick={handleMaximize}
           className="w-8 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-all text-xs"
-          title="Büyüt / Küçült"
+          title={t('dashboardUI.maximize')}
         >
           □
         </button>
         <button
           onClick={handleClose}
           className="w-8 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-rose-500 transition-all text-sm"
-          title="Kapat"
+          title={t('dashboardUI.close')}
         >
           ✕
         </button>

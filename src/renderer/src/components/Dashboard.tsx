@@ -3,7 +3,8 @@ import { useLiveShiftEngine, timeToSeconds, formatRemaining } from '../hooks/use
 import { useShiftStore, type BreakType, type BreakSubtype } from '../stores/useShiftStore'
 import { MotivationContext, MotivationLine, MotivationState, HIGHLIGHT } from '../utils/motivationEngine'
 import { generateComment } from '../utils/commentEngine'
-import { useT } from '../i18n/useT'
+import { useT, type TKey } from '../i18n/useT'
+import { getWeekdayShort } from '../utils/dateConstants'
 import TypewriterText from './TypewriterText'
 import Timeline from './Timeline'
 import WeatherWidget from './WeatherWidget'
@@ -77,36 +78,40 @@ export function getColors(color: string) {
 }
 
 // ── Pay modu mola kartı ────────────────────────────────────────────────────────
-const BREAK_GROUPS: { type: BreakType; label: string; icon: string; items: { subtype: BreakSubtype; label: string; icon: string }[] }[] = [
-  {
-    type: 'short',
-    label: 'Kısa Mola',
-    icon: '🫖',
-    items: [
-      { subtype: 'cay', label: 'Çay', icon: '🍵' },
-      { subtype: 'kahve', label: 'Kahve', icon: '☕' },
-      { subtype: 'ihtiyac', label: 'İhtiyaç', icon: '🚻' }
-    ]
-  },
-  {
-    type: 'meal',
-    label: 'Yemek Molası',
-    icon: '🍽️',
-    items: [
-      { subtype: 'kahvalti', label: 'Kahvaltı', icon: '🍳' },
-      { subtype: 'ogle', label: 'Öğle Yemeği', icon: '🍲' },
-      { subtype: 'aksam', label: 'Akşam Yemeği', icon: '🍛' }
-    ]
-  }
-]
+function getBreakGroups(t: (key: TKey, vars?: Record<string, string | number>) => string) {
+  return [
+    {
+      type: 'short' as BreakType,
+      label: t('todaySummaryUI.typeShort'),
+      icon: '🫖',
+      items: [
+        { subtype: 'cay' as BreakSubtype, label: t('todaySummaryUI.subtypeCay'), icon: '🍵' },
+        { subtype: 'kahve' as BreakSubtype, label: t('todaySummaryUI.subtypeKahve'), icon: '☕' },
+        { subtype: 'ihtiyac' as BreakSubtype, label: t('todaySummaryUI.subtypeIhtiyac'), icon: '🚻' }
+      ]
+    },
+    {
+      type: 'meal' as BreakType,
+      label: t('todaySummaryUI.typeMeal'),
+      icon: '🍽️',
+      items: [
+        { subtype: 'kahvalti' as BreakSubtype, label: t('todaySummaryUI.subtypeKahvalti'), icon: '🍳' },
+        { subtype: 'ogle' as BreakSubtype, label: t('todaySummaryUI.subtypeOgle'), icon: '🍲' },
+        { subtype: 'aksam' as BreakSubtype, label: t('todaySummaryUI.subtypeAksam'), icon: '🍛' }
+      ]
+    }
+  ]
+}
 
-const SUBTYPE_LABELS: Record<BreakSubtype, { label: string; icon: string }> = {
-  cay: { label: 'Çay', icon: '🍵' },
-  kahve: { label: 'Kahve', icon: '☕' },
-  ihtiyac: { label: 'İhtiyaç Molası', icon: '🚻' },
-  kahvalti: { label: 'Kahvaltı', icon: '🍳' },
-  ogle: { label: 'Öğle Yemeği', icon: '🍲' },
-  aksam: { label: 'Akşam Yemeği', icon: '🍛' }
+function getSubtypeLabels(t: (key: TKey, vars?: Record<string, string | number>) => string): Record<BreakSubtype, { label: string; icon: string }> {
+  return {
+    cay: { label: t('todaySummaryUI.subtypeCay'), icon: '🍵' },
+    kahve: { label: t('todaySummaryUI.subtypeKahve'), icon: '☕' },
+    ihtiyac: { label: t('todaySummaryUI.subtypeIhtiyac'), icon: '🚻' },
+    kahvalti: { label: t('todaySummaryUI.subtypeKahvalti'), icon: '🍳' },
+    ogle: { label: t('todaySummaryUI.subtypeOgle'), icon: '🍲' },
+    aksam: { label: t('todaySummaryUI.subtypeAksam'), icon: '🍛' }
+  }
 }
 
 // HH:MM from a timestamp — for "Son Mola saat kaçta" on the break card
@@ -116,6 +121,7 @@ function msToClock(ts: number): string {
 }
 
 function BreakCard() {
+  const { t } = useT()
   const settings = useShiftStore((s) => s.settings)
   const runningBreak = useShiftStore((s) => s.runningBreak)
   const breakUsage = useShiftStore((s) => s.breakUsage)
@@ -125,12 +131,15 @@ function BreakCard() {
   const resetBreaks = useShiftStore((s) => s.resetBreaks)
   const payPaused = useShiftStore((s) => s.payPaused)
 
+  const breakGroups = getBreakGroups(t)
+  const subtypeLabels = getSubtypeLabels(t)
+
   // Two-stage inline confirm so a tiny reset button never wipes data by accident
   const [confirmReset, setConfirmReset] = useState(false)
   useEffect(() => {
     if (!confirmReset) return
-    const t = window.setTimeout(() => setConfirmReset(false), 2500)
-    return () => window.clearTimeout(t)
+    const timer = window.setTimeout(() => setConfirmReset(false), 2500)
+    return () => window.clearTimeout(timer)
   }, [confirmReset])
 
   // Live elapsed for the running break (ticks once a second)
@@ -139,19 +148,19 @@ function BreakCard() {
     if (!runningBreak) { setLiveSeconds(0); return }
     const tick = () => setLiveSeconds(Math.max(0, Math.floor((Date.now() - runningBreak.startedAt) / 1000)))
     tick()
-    const t = window.setInterval(tick, 1000)
-    return () => window.clearInterval(t)
+    const interval = window.setInterval(tick, 1000)
+    return () => window.clearInterval(interval)
   }, [runningBreak])
 
   const usedOf = (type: BreakType): number => {
-    const subs = BREAK_GROUPS.find(g => g.type === type)!.items.map(i => i.subtype)
+    const subs = breakGroups.find(g => g.type === type)!.items.map(i => i.subtype)
     return subs.reduce((a, s) => a + (breakUsage[s] ?? 0), 0)
   }
 
   return (
     <div className="fluent-card p-5">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">🧘 MOLA</span>
+        <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">🧘 {t('dashboardUI.breakCardTitle')}</span>
         <button
           onClick={() => {
             if (confirmReset) {
@@ -166,9 +175,9 @@ function BreakCard() {
               ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
               : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200'
           }`}
-          title="Bugünün mola verilerini sıfırla"
+          title={t('dashboardUI.resetBreakTitle')}
         >
-          {confirmReset ? 'Emin misin?' : '↺ Sıfırla'}
+          {confirmReset ? t('dashboardUI.confirmReset') : t('dashboardUI.resetBtn')}
         </button>
       </div>
 
@@ -177,14 +186,14 @@ function BreakCard() {
           runningBreak.overBudget ? 'bg-rose-500/10 border-rose-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
         }`}>
           <div className="flex items-center gap-2.5 min-w-0">
-            <span className="text-2xl flex-shrink-0">{SUBTYPE_LABELS[runningBreak.subtype].icon}</span>
+            <span className="text-2xl flex-shrink-0">{subtypeLabels[runningBreak.subtype].icon}</span>
             <div className="min-w-0">
               <p className={`text-sm font-semibold ${runningBreak.overBudget ? 'text-rose-300' : 'text-emerald-300'}`}>
-                {SUBTYPE_LABELS[runningBreak.subtype].label}
-                {runningBreak.overBudget && ' · Bütçe doldu'}
+                {subtypeLabels[runningBreak.subtype].label}
+                {runningBreak.overBudget && ` · ${t('dashboardUI.budgetFull')}`}
               </p>
               <p className="text-[10px] text-slate-500 mt-0.5">
-                {runningBreak.overBudget ? 'Bu mola aşım olarak sayılıyor' : 'Bütçe içinde geçiyor'}
+                {runningBreak.overBudget ? t('dashboardUI.breakOverBudget') : t('dashboardUI.breakInBudget')}
               </p>
             </div>
           </div>
@@ -194,7 +203,7 @@ function BreakCard() {
               onClick={stopBreak}
               className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] px-3 py-1.5 rounded-lg font-semibold border border-white/5 transition-colors whitespace-nowrap"
             >
-              Molayı Bitir
+              {t('dashboardUI.endBreak')}
             </button>
           </div>
         </div>
@@ -202,20 +211,20 @@ function BreakCard() {
 
       {breakLog.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 bg-white/3 border border-white/5 rounded-lg px-3 py-2">
-          <span className="text-slate-400 font-medium">Son Mola:</span>
-          <span>{SUBTYPE_LABELS[breakLog[breakLog.length - 1].subtype].icon} {SUBTYPE_LABELS[breakLog[breakLog.length - 1].subtype].label}</span>
+          <span className="text-slate-400 font-medium">{t('dashboardUI.lastBreak')}:</span>
+          <span>{subtypeLabels[breakLog[breakLog.length - 1].subtype].icon} {subtypeLabels[breakLog[breakLog.length - 1].subtype].label}</span>
           <span className="text-slate-600">·</span>
           <span className="font-mono">{msToClock(breakLog[breakLog.length - 1].startedAt)}</span>
           <span className="text-slate-600">·</span>
           <span className="font-mono font-semibold text-slate-300">{formatRemaining(breakLog[breakLog.length - 1].durationSec)}</span>
           {breakLog[breakLog.length - 1].overBudget && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">AŞIM</span>
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">{t('dashboardUI.overtimeBadge')}</span>
           )}
         </div>
       )}
 
       <div className="flex flex-col gap-3">
-        {BREAK_GROUPS.map((g) => {
+        {breakGroups.map((g) => {
           const budget = g.type === 'short' ? settings.payShortBreakMin : settings.payMealBreakMin
           const used = usedOf(g.type)
           const over = used >= budget
@@ -225,8 +234,8 @@ function BreakCard() {
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[11px] font-medium text-slate-400">{g.icon} {g.label}</span>
                 <span className={`text-[11px] font-mono ${over ? 'text-rose-400' : 'text-slate-500'}`}>
-                  {used}/{budget} dk
-                  <span className="ml-1 text-slate-600">· kalan {left}</span>
+                  {used}/{budget} {t('times.minShort')}
+                  <span className="ml-1 text-slate-600">· {t('dashboardUI.payRemainingLabel')} {left}</span>
                 </span>
               </div>
               <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5 mb-2">
@@ -258,7 +267,7 @@ function BreakCard() {
                 </div>
               )}
               {over && (
-                <p className="text-[9px] text-rose-400/80 mt-1.5">Bütçe doldu — bu bütçeden sonraki molalar aşım olarak sayılır.</p>
+                <p className="text-[9px] text-rose-400/80 mt-1.5">{t('dashboardUI.budgetExceeded')}</p>
               )}
             </div>
           )
@@ -270,7 +279,7 @@ function BreakCard() {
 
 // ── Motivasyon mesajı ──────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const { t } = useT()
+  const { t, language } = useT()
   const {
     currentTime,
     currentTimeSecs,
@@ -360,38 +369,38 @@ export default function Dashboard() {
 
   let status = { text: '—', cls: 'text-slate-400' }
   if (mode === 'chrono') {
-    if (isChronoWork) status = { text: 'Çalışıyor', cls: 'text-amber-400' }
-    else if (isChronoBreak) status = { text: 'Molada', cls: 'text-emerald-400' }
-    else status = { text: 'Bekliyor', cls: 'text-slate-400' }
+    if (isChronoWork) status = { text: t('dashboardUI.statusWorking'), cls: 'text-amber-400' }
+    else if (isChronoBreak) status = { text: t('dashboardUI.statusOnBreak'), cls: 'text-emerald-400' }
+    else status = { text: t('dashboardUI.statusWaiting'), cls: 'text-slate-400' }
   } else {
-    if (isShiftFinished) status = { text: 'Tamamlandı', cls: 'text-emerald-400' }
-    else if (isBeforeShift) status = { text: 'Başlamadı', cls: 'text-slate-400' }
-    else if (paybackRunning) status = { text: 'Payback', cls: 'text-amber-400' }
-    else if (breakRunning && !overBudgetBreak) status = { text: 'Molada', cls: 'text-emerald-400' }
-    else if (isIdle) status = { text: 'Aşımda', cls: 'text-amber-400' }
-    else if (currentActivity) status = { text: 'Devam Ediyor', cls: 'accent-text' }
+    if (isShiftFinished) status = { text: t('dashboardUI.statusCompleted'), cls: 'text-emerald-400' }
+    else if (isBeforeShift) status = { text: t('dashboardUI.statusNotStarted'), cls: 'text-slate-400' }
+    else if (paybackRunning) status = { text: t('dashboardUI.statusPayback'), cls: 'text-amber-400' }
+    else if (breakRunning && !overBudgetBreak) status = { text: t('dashboardUI.statusOnBreak'), cls: 'text-emerald-400' }
+    else if (isIdle) status = { text: t('dashboardUI.statusOvertime'), cls: 'text-amber-400' }
+    else if (currentActivity) status = { text: t('dashboardUI.statusOngoing'), cls: 'accent-text' }
     else status = { text: '—', cls: 'text-slate-400' }
   }
 
   // Stats — mode-aware
   const stats = mode === 'pay' ? [
-    { key: 'start', label: 'Vardiya Başlangıcı', value: settings.payShiftStart, icon: '🌅', accent: false },
-    { key: 'end', label: 'Vardiya Bitişi', value: settings.payShiftEnd, icon: '🌇', accent: false },
-    { key: 'planned', label: settings.payTargetMode === 'duration' ? 'Hedef Süre' : 'Planlanan Süre', value: settings.payTargetMode === 'duration' ? `${settings.payDurationMin} dk` : formatRemaining((payShiftEndSecs - payShiftStartSecs)), icon: '📋', accent: false },
-    { key: 'worked', label: 'Çalışılan Süre', value: formatRemaining(workedSeconds), icon: '💪', accent: false },
-    { key: 'idle', label: 'Aşım (Günün Toplamı)', value: idleLogSeconds > 0 ? formatRemaining(idleLogSeconds) : '—', icon: '📈', accent: idleLogSeconds > 0 },
-    { key: 'remaining', label: 'Kalan Süre', value: durationMode ? formatRemaining(Math.max(0, durationTargetSecs - payWorkSecs)) : (realSecs >= effectiveShiftEndSecs ? '—' : formatRemaining(Math.max(0, effectiveShiftEndSecs - realSecs))), icon: '⏱', accent: false }
+    { key: 'start', label: t('dashboardUI.statShiftStart'), value: settings.payShiftStart, icon: '🌅', accent: false },
+    { key: 'end', label: t('dashboardUI.statShiftEnd'), value: settings.payShiftEnd, icon: '🌇', accent: false },
+    { key: 'planned', label: settings.payTargetMode === 'duration' ? t('dashboardUI.statTargetDuration') : t('dashboardUI.statPlannedDuration'), value: settings.payTargetMode === 'duration' ? `${settings.payDurationMin} ${t('times.minShort')}` : formatRemaining((payShiftEndSecs - payShiftStartSecs)), icon: '📋', accent: false },
+    { key: 'worked', label: t('dashboardUI.statWorkedDuration'), value: formatRemaining(workedSeconds), icon: '💪', accent: false },
+    { key: 'idle', label: t('dashboardUI.statOvertimeTotal'), value: idleLogSeconds > 0 ? formatRemaining(idleLogSeconds) : '—', icon: '📈', accent: idleLogSeconds > 0 },
+    { key: 'remaining', label: t('dashboardUI.statRemaining'), value: durationMode ? formatRemaining(Math.max(0, durationTargetSecs - payWorkSecs)) : (realSecs >= effectiveShiftEndSecs ? '—' : formatRemaining(Math.max(0, effectiveShiftEndSecs - realSecs))), icon: '⏱', accent: false }
   ] : mode === 'chrono' ? [
-    { key: 'worked', label: 'Toplam Çalışma', value: formatRemaining(chronoWorkSecs), icon: '💪', accent: false },
-    { key: 'break', label: 'Toplam Mola', value: formatRemaining(chronoBreakSecs), icon: '☕', accent: false },
-    { key: 'sessions', label: 'Çalışma Durumu', value: isChronoWork ? 'Aktif' : isChronoBreak ? 'Mola' : 'Duraklatıldı', icon: '⏱', accent: false }
+    { key: 'worked', label: t('dashboardUI.statTotalWork'), value: formatRemaining(chronoWorkSecs), icon: '💪', accent: false },
+    { key: 'break', label: t('dashboardUI.chronoTotalBreak'), value: formatRemaining(chronoBreakSecs), icon: '☕', accent: false },
+    { key: 'sessions', label: t('dashboardUI.statWorkStatus'), value: isChronoWork ? t('dashboardUI.chronoActive') : isChronoBreak ? t('dashboardUI.chronoBreak') : t('dashboardUI.chronoPaused'), icon: '⏱', accent: false }
   ] : [
-    { key: 'start', label: 'Vardiya Başlangıcı', value: shiftStartTime, icon: '🌅', accent: false },
-    { key: 'end', label: 'Vardiya Bitişi', value: shiftEndTime, icon: '🌇', accent: false },
-    { key: 'planned', label: 'Planlanan Süre', value: formatRemaining(plannedMinutes * 60), icon: '📋', accent: false },
-    { key: 'worked', label: 'Çalışılan Süre', value: formatRemaining(workedSeconds), icon: '💪', accent: false },
-    { key: 'idle', label: 'Aşım (Günün Toplamı)', value: idleLogSeconds > 0 ? formatRemaining(idleLogSeconds) : '—', icon: '📈', accent: idleLogSeconds > 0 },
-    { key: 'remaining', label: 'Kalan Süre', value: realSecs >= effectiveShiftEndSecs ? '—' : formatRemaining(Math.max(0, effectiveShiftEndSecs - realSecs)), icon: '⏱', accent: false }
+    { key: 'start', label: t('dashboardUI.statShiftStart'), value: shiftStartTime, icon: '🌅', accent: false },
+    { key: 'end', label: t('dashboardUI.statShiftEnd'), value: shiftEndTime, icon: '🌇', accent: false },
+    { key: 'planned', label: t('dashboardUI.statPlannedDuration'), value: formatRemaining(plannedMinutes * 60), icon: '📋', accent: false },
+    { key: 'worked', label: t('dashboardUI.statWorkedDuration'), value: formatRemaining(workedSeconds), icon: '💪', accent: false },
+    { key: 'idle', label: t('dashboardUI.statOvertimeTotal'), value: idleLogSeconds > 0 ? formatRemaining(idleLogSeconds) : '—', icon: '📈', accent: idleLogSeconds > 0 },
+    { key: 'remaining', label: t('dashboardUI.statRemaining'), value: realSecs >= effectiveShiftEndSecs ? '—' : formatRemaining(Math.max(0, effectiveShiftEndSecs - realSecs)), icon: '⏱', accent: false }
   ]
 
   // Weekly heatmap — last 7 days from dailyLogs
@@ -400,7 +409,7 @@ export default function Dashboard() {
     d.setDate(d.getDate() - (6 - i))
     return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
   })
-  const DAY_SHORT = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt']
+  const DAY_SHORT = getWeekdayShort(language)
 
   const handleCompleteShift = () => { completeShift(currentDateStr) }
   const handleUncompleteShift = () => { uncompleteShift(currentDateStr) }
@@ -439,12 +448,12 @@ export default function Dashboard() {
 
   const buildCtx = (): MotivationContext => ({
     state,
-    activityName: currentActivity?.name ?? (mode === 'chrono' && isChronoWork ? 'Kronometre Çalışması' : undefined),
+    activityName: currentActivity?.name ?? (mode === 'chrono' && isChronoWork ? t('dashboardUI.chronoWorkCounter') : undefined),
     activityIcon: currentActivity?.icon ?? (mode === 'chrono' && isChronoWork ? '⏱️' : undefined),
-    nextLabel: nextActivity ? `${nextActivity.icon} ${nextActivity.name}` : (mode === 'chrono' && isChronoBreak ? '☕ Molayı Bitir' : ''),
+    nextLabel: nextActivity ? `${nextActivity.icon} ${nextActivity.name}` : (mode === 'chrono' && isChronoBreak ? `☕ ${t('dashboardUI.endBreak')}` : ''),
     isLastActivity: isCurrentLast,
     shiftProgress,
-    shiftName: activeTemplate?.name ?? (mode === 'chrono' ? 'Krono Modu' : undefined),
+    shiftName: activeTemplate?.name ?? (mode === 'chrono' ? t('dashboardUI.shiftChrono') : undefined),
     idleSeconds,
     workedSeconds,
     breakSeconds: (isIdle || isOvertime) ? idleSeconds : 0,
@@ -473,7 +482,7 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false
     const ctx = ctxRef.current ?? buildCtx()
-    generateComment(ctx, { lastText: lastLineRef.current, recent: recentLinesRef.current }).then((line) => {
+    generateComment(t, ctx, { lastText: lastLineRef.current, recent: recentLinesRef.current }).then((line) => {
       if (!cancelled) applyLine(line)
     })
     return () => { cancelled = true }
@@ -488,7 +497,7 @@ export default function Dashboard() {
       const delay = (6 + Math.random() * 6) * 60 * 1000
       timeout = window.setTimeout(() => {
         const ctx = ctxRef.current ?? buildCtx()
-        generateComment(ctx, { ambient: true, lastText: lastLineRef.current, recent: recentLinesRef.current }).then((line) => {
+        generateComment(t, ctx, { ambient: true, lastText: lastLineRef.current, recent: recentLinesRef.current }).then((line) => {
           if (!cancelled) applyLine(line)
         })
         schedule()
@@ -508,7 +517,7 @@ export default function Dashboard() {
         {/* Clock & Active Shift Summary */}
         <div className="fluent-card p-6 flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="min-w-0 flex-shrink-0" style={{ minWidth: '260px' }}>
-            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">SİSTEM SAATİ</span>
+            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">{t('dashboardUI.systemClock')}</span>
             <h2 className={`text-4xl lg:text-5xl font-light text-white tracking-tight mt-1 tabular-nums whitespace-nowrap clock-font-${settings.clockFont}`}>
               {currentTime}
               <span className="text-lg lg:text-xl font-light text-slate-500 ml-1">{currentTimeSecs.substring(5)}</span>
@@ -525,9 +534,9 @@ export default function Dashboard() {
               <button
                 onClick={() => setTimeOffset(0)}
                 className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-[11px] text-indigo-300 font-medium hover:bg-indigo-500/20 transition-colors"
-                title="Canlı saate dön"
+                title={t('dashboardUI.timeOverrideTitle')}
               >
-                ↺ Geri alındı — <span className="font-mono font-bold">{effectiveTime}</span> · Canlıya Dön
+                ↺ Geri alındı — <span className="font-mono font-bold">{effectiveTime}</span> · {t('dashboardUI.timeOverrideLive')}
               </button>
             )}
           </div>
@@ -540,7 +549,7 @@ export default function Dashboard() {
                     ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
                     : 'accent-soft accent-border-soft accent-text-soft'
               }`}>
-                {mode === 'pay' ? 'PAY MODU' : mode === 'chrono' ? 'KRONO MODU' : 'MYSHIFT MODU'}
+                {mode === 'pay' ? t('dashboardUI.modePay') : mode === 'chrono' ? t('dashboardUI.modeChrono') : t('dashboardUI.modeMyShift')}
               </span>
             </div>
             <div className="flex items-center gap-1 mt-2 sm:justify-end">
@@ -558,36 +567,36 @@ export default function Dashboard() {
                       : 'bg-white/5 border-white/10 text-slate-500 hover:text-slate-300 hover:bg-white/10'
                   }`}
                 >
-                  {m === 'myshift' ? '⏰ MyShift' : m === 'pay' ? '💰 Pay' : '⏱ Krono'}
+                  {m === 'myshift' ? '⏰ MyShift' : m === 'pay' ? '💰 Pay' : `⏱ ${t('dashboardUI.shiftChrono')}`}
                 </button>
               ))}
             </div>
             <h3 className="text-lg font-medium text-slate-200 mt-1.5 truncate">
-              {mode === 'chrono' ? 'Krono Modu' : mode === 'pay' ? 'Pay Vardiyası' : activeTemplate ? activeTemplate.name : 'Vardiya Atanmadı'}
+              {mode === 'chrono' ? t('dashboardUI.shiftChrono') : mode === 'pay' ? t('dashboardUI.shiftPay') : activeTemplate ? activeTemplate.name : t('dashboardUI.shiftNone')}
             </h3>
             {mode === 'pay' && (
               <p className="text-xs text-slate-400 mt-0.5 truncate">
                 {durationMode
-                  ? `Hedef: ${settings.payDurationMin} dk • Çalışılan: ${formatRemaining(payWorkSecs)}${payPaused ? ' • ⏸ Duraklatıldı' : ''}${breakSeconds > 0 ? ` • Mola: ${formatRemaining(breakSeconds)}` : ''}`
-                  : `${settings.payShiftStart} - ${settings.payShiftEnd} • ${Object.values(breakUsage).reduce((a, b) => a + (b ?? 0), 0)} dk mola kullanıldı`}
+                  ? `${t('dashboardUI.payTarget')}: ${settings.payDurationMin} ${t('times.minShort')} • ${t('dashboardUI.payWorked')}: ${formatRemaining(payWorkSecs)}${payPaused ? ` • ⏸ ${t('dashboardUI.payPausedLabel')}` : ''}${breakSeconds > 0 ? ` • ${t('dashboardUI.chronoBreakLabel')}: ${formatRemaining(breakSeconds)}` : ''}`
+                  : `${settings.payShiftStart} - ${settings.payShiftEnd} • ${Object.values(breakUsage).reduce((a, b) => a + (b ?? 0), 0)} ${t('dashboardUI.payBreakUsed')}`}
               </p>
             )}
             {mode === 'chrono' && (
               <p className="text-xs text-slate-400 mt-0.5 truncate">
                 {isChronoWork
-                  ? `Çalışıyor: ${formatRemaining(chronoWorkSecs)}`
+                  ? `${t('dashboardUI.chronoWorking')}: ${formatRemaining(chronoWorkSecs)}`
                   : isChronoBreak
-                    ? `Molada: ${formatRemaining(chronoBreakSecs)}`
+                    ? `${t('dashboardUI.chronoOnBreak')}: ${formatRemaining(chronoBreakSecs)}`
                     : chronoWorkSecs > 0 || chronoBreakSecs > 0
-                      ? `Çalışma: ${formatRemaining(chronoWorkSecs)} • Mola: ${formatRemaining(chronoBreakSecs)}`
-                      : 'Kronometre henüz başlatılmadı'}
+                      ? `${t('dashboardUI.chronoWorkLabel')}: ${formatRemaining(chronoWorkSecs)} • ${t('dashboardUI.chronoBreakLabel')}: ${formatRemaining(chronoBreakSecs)}`
+                      : t('dashboardUI.chronoNotStarted')}
               </p>
             )}
             {mode !== 'chrono' && mode !== 'pay' && activeTemplate && activeTemplate.activities.length > 0 && (
               <p className="text-xs text-slate-400 mt-0.5 truncate">
                 {durationMode
-                  ? `Toplam ${Math.round(durationTargetSecs / 60)} dk • Çalışılan ${formatRemaining(payWorkSecs)}`
-                  : `${activeTemplate.activities.length} Aktivite • ${activeTemplate.activities[0].startTime} - ${activeTemplate.activities[activeTemplate.activities.length - 1].endTime}`}
+                  ? `${t('dashboardUI.totalMinutes')} ${Math.round(durationTargetSecs / 60)} ${t('times.minShort')} • ${t('dashboardUI.payWorked')} ${formatRemaining(payWorkSecs)}`
+                  : `${activeTemplate.activities.length} ${t('dashboardUI.activityCount')} • ${activeTemplate.activities[0].startTime} - ${activeTemplate.activities[activeTemplate.activities.length - 1].endTime}`}
               </p>
             )}
           </div>
@@ -599,8 +608,8 @@ export default function Dashboard() {
           <div>
             <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">
               {mode === 'chrono'
-                ? (isChronoWork ? 'KRONO · ÇALIŞMA' : isChronoBreak ? 'KRONO · MOLA' : 'KRONO · BEKLİYOR')
-                : paybackRunning ? 'MEVCUT AKTİVİTE · PAYBACK' : 'MEVCUT AKTİVİTE'}
+                ? (isChronoWork ? t('dashboardUI.headerChronoWork') : isChronoBreak ? t('dashboardUI.headerChronoBreak') : t('dashboardUI.headerChronoWaiting'))
+                : paybackRunning ? t('dashboardUI.headerPayback') : t('dashboardUI.headerCurrentActivity')}
             </span>
 
             {mode === 'chrono' ? (
@@ -609,15 +618,15 @@ export default function Dashboard() {
                   <div className="flex items-start gap-4">
                     <div className="text-5xl p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 shadow-lg shadow-amber-500/10 animate-pulse">⏱️</div>
                     <div className="flex-1 min-w-0">
-                      <h1 className="text-3xl font-semibold text-white tracking-wide">Çalışma Sayacı</h1>
-                      <p className="text-sm text-slate-400 mt-1">Kronometre çalışıyor — molaya geçmek için butonu kullan.</p>
+                      <h1 className="text-3xl font-semibold text-white tracking-wide">{t('dashboardUI.chronoWorkCounter')}</h1>
+                      <p className="text-sm text-slate-400 mt-1">{t('dashboardUI.chronoWorkDesc')}</p>
                       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1">
                         <p>
-                          <span className="text-xs text-slate-400">Çalışma:</span>{' '}
+                          <span className="text-xs text-slate-400">{t('dashboardUI.chronoWorkLabel')}:</span>{' '}
                           <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(chronoWorkSecs)}</span>
                         </p>
                         <p>
-                          <span className="text-xs text-slate-400">Mola:</span>{' '}
+                          <span className="text-xs text-slate-400">{t('dashboardUI.chronoBreakLabel')}:</span>{' '}
                           <span className="font-mono font-semibold text-slate-300 text-lg">{formatRemaining(chronoBreakSecs)}</span>
                         </p>
                       </div>
@@ -627,15 +636,15 @@ export default function Dashboard() {
                   <div className="flex items-start gap-4">
                     <div className="text-5xl p-4 rounded-2xl border bg-emerald-500/10 border-emerald-500/30 shadow-lg shadow-emerald-500/10 animate-pulse">☕</div>
                     <div className="flex-1 min-w-0">
-                      <h1 className="text-3xl font-semibold text-white tracking-wide">Mola Sayacı</h1>
-                      <p className="text-sm text-slate-400 mt-1">Moladasın — molayı bitirip çalışmaya dönebilirsin.</p>
+                      <h1 className="text-3xl font-semibold text-white tracking-wide">{t('dashboardUI.chronoBreakCounter')}</h1>
+                      <p className="text-sm text-slate-400 mt-1">{t('dashboardUI.chronoBreakDesc')}</p>
                       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1">
                         <p>
-                          <span className="text-xs text-slate-400">Çalışma:</span>{' '}
+                          <span className="text-xs text-slate-400">{t('dashboardUI.chronoWorkLabel')}:</span>{' '}
                           <span className="font-mono font-semibold text-slate-300 text-lg">{formatRemaining(chronoWorkSecs)}</span>
                         </p>
                         <p>
-                          <span className="text-xs text-slate-400">Mola:</span>{' '}
+                          <span className="text-xs text-slate-400">{t('dashboardUI.chronoBreakLabel')}:</span>{' '}
                           <span className="font-mono font-bold text-emerald-300 text-lg">{formatRemaining(chronoBreakSecs)}</span>
                         </p>
                       </div>
@@ -645,16 +654,16 @@ export default function Dashboard() {
                   <div className="flex items-start gap-4">
                     <div className="text-5xl p-4 rounded-2xl border bg-slate-500/10 border-slate-500/20">⏱️</div>
                     <div>
-                      <h1 className="text-2xl font-medium text-slate-300">Kronometre Hazır</h1>
-                      <p className="text-sm text-slate-400 mt-1">Çalışmaya başlamak için butona bas. Kronometre saymaya başlayacak.</p>
+                      <h1 className="text-2xl font-medium text-slate-300">{t('dashboardUI.chronoReady')}</h1>
+                      <p className="text-sm text-slate-400 mt-1">{t('dashboardUI.chronoReadyDesc')}</p>
                       {chronoWorkSecs > 0 || chronoBreakSecs > 0 ? (
                         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1">
                           <p>
-                            <span className="text-xs text-slate-400">Toplam Çalışma:</span>{' '}
+                            <span className="text-xs text-slate-400">{t('dashboardUI.chronoTotalWork')}:</span>{' '}
                             <span className="font-mono font-semibold text-slate-300 text-lg">{formatRemaining(chronoWorkSecs)}</span>
                           </p>
                           <p>
-                            <span className="text-xs text-slate-400">Toplam Mola:</span>{' '}
+                            <span className="text-xs text-slate-400">{t('dashboardUI.chronoTotalBreak')}:</span>{' '}
                             <span className="font-mono font-semibold text-slate-300 text-lg">{formatRemaining(chronoBreakSecs)}</span>
                           </p>
                         </div>
@@ -669,13 +678,13 @@ export default function Dashboard() {
                         onClick={chronoStop}
                         className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
                       >
-                        ⏹ Durdur
+                        {t('dashboardUI.btnStop')}
                       </button>
                       <button
                         onClick={chronoStartBreak}
                         className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-emerald-500/20"
                       >
-                        ☕ Mola Başlat
+                        {t('dashboardUI.btnStartBreak')}
                       </button>
                     </>
                   ) : isChronoBreak ? (
@@ -684,13 +693,13 @@ export default function Dashboard() {
                         onClick={chronoStop}
                         className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
                       >
-                        ⏹ Durdur
+                        {t('dashboardUI.btnStop')}
                       </button>
                       <button
                         onClick={chronoStartWork}
                         className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-amber-500/20"
                       >
-                        ⏱️ Çalışmaya Dön
+                        {t('dashboardUI.btnBackToWork')}
                       </button>
                     </>
                   ) : (
@@ -698,7 +707,7 @@ export default function Dashboard() {
                       onClick={chronoStartWork}
                       className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-amber-500/20"
                     >
-                      ▶ Çalışmaya Başla
+                      {t('dashboardUI.btnStartWork')}
                     </button>
                   )}
                 </div>
@@ -708,12 +717,12 @@ export default function Dashboard() {
                 <div className="text-5xl p-4 rounded-2xl border bg-slate-500/10 border-slate-500/20">🚫</div>
                 <div>
                   <h1 className="text-2xl font-medium text-slate-300">
-                    {mode === 'pay' ? 'Vardiya Henüz Başlamadı' : 'Bugün İçin Vardiya Yok'}
+                    {mode === 'pay' ? t('dashboardUI.noShiftPay') : t('dashboardUI.noShiftMyShift')}
                   </h1>
                   <p className="text-sm text-slate-400 mt-1">
                     {mode === 'pay'
-                      ? `Vardiya saati ${settings.payShiftStart}'de başlayacak. Şu an serbestsiniz.`
-                      : 'Şu an serbestsiniz — bu süre aşım sayılmaz. Vardiya planınızı Vardiya Düzenleyici\'den etkinleştirebilirsiniz.'}
+                      ? t('dashboardUI.noShiftPayDesc', { time: settings.payShiftStart })
+                      : t('dashboardUI.noShiftFree')}
                   </p>
                 </div>
               </div>
@@ -722,12 +731,12 @@ export default function Dashboard() {
                 <div className="flex items-start gap-4">
                   <div className="text-5xl p-4 rounded-2xl border bg-rose-500/10 border-rose-500/30 shadow-lg shadow-rose-500/10">⛔</div>
                   <div className="flex-1 min-w-0">
-                    <h1 className="text-2xl font-semibold text-rose-300">Bütçe Dışı Mola — Aşım Sayılıyor</h1>
+                    <h1 className="text-2xl font-semibold text-rose-300">{t('dashboardUI.overBudgetTitle')}</h1>
                     <p className="text-sm text-slate-400 mt-1">
-                      Mola bütçeniz doldu; bu mola çalışma süresinden düşülmez ve aşım olarak kaydedilir.
+                      {t('dashboardUI.overBudgetDesc')}
                     </p>
                     <p className="mt-2">
-                      <span className="text-xs text-slate-400">Toplam Aşım:</span>{' '}
+                      <span className="text-xs text-slate-400">{t('dashboardUI.totalOvertime')}:</span>{' '}
                       <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds)}</span>
                     </p>
                   </div>
@@ -737,7 +746,7 @@ export default function Dashboard() {
                     onClick={stopBreak}
                     className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
                   >
-                    ⏹ Molayı Bitir
+                    {t('dashboardUI.endBreak')}
                   </button>
                 </div>
               </div>
@@ -751,30 +760,30 @@ export default function Dashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h1 className="text-3xl font-semibold text-white tracking-wide">
-                        {breakRunning && !overBudgetBreak ? 'Moladasın' : overBudgetBreak ? 'Bütçe Dışı Mola' : 'Çalışma Süresi'}
+                        {breakRunning && !overBudgetBreak ? t('dashboardUI.payOnBreak') : overBudgetBreak ? t('dashboardUI.payOverBudgetBreak') : t('dashboardUI.payWorkTime')}
                       </h1>
                       <p className="text-sm text-slate-400 mt-1">
                         {breakRunning && !overBudgetBreak
-                          ? 'Mola bütçenden harcıyor — bitince otomatik devam edecek.'
+                          ? t('dashboardUI.payBreakSpending')
                           : overBudgetBreak
-                            ? 'Bu mola bütçeyi aştı, aşım olarak sayılıyor.'
+                            ? t('dashboardUI.payOverBudgetDesc')
                             : durationMode
-                              ? 'Hedefine çalıştıkça kalan süre azalıyor.'
-                              : `Vardiya ${settings.payShiftStart} - ${settings.payShiftEnd} arası aktif.`}
+                              ? t('dashboardUI.payDurationDesc')
+                              : t('dashboardUI.payWindowDesc', { start: settings.payShiftStart, end: settings.payShiftEnd })}
                       </p>
                       {durationMode ? (
                         <div className="mt-3 max-w-lg">
                           <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5">
                             <p>
-                              <span className="text-xs text-slate-400">Hedef:</span>{' '}
+                              <span className="text-xs text-slate-400">{t('dashboardUI.payTargetLabel')}:</span>{' '}
                               <span className="font-mono font-bold text-slate-200 text-lg">{formatRemaining(durationTargetSecs)}</span>
                             </p>
                             <p>
-                              <span className="text-xs text-slate-400">Çalışılan:</span>{' '}
+                              <span className="text-xs text-slate-400">{t('dashboardUI.payWorked')}:</span>{' '}
                               <span className="font-mono font-semibold text-emerald-300 text-lg">{formatRemaining(payWorkSecs)}</span>
                             </p>
                             <p>
-                              <span className="text-xs text-slate-400">Kalan:</span>{' '}
+                              <span className="text-xs text-slate-400">{t('dashboardUI.payRemainingLabel')}:</span>{' '}
                               <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(Math.max(0, durationTargetSecs - payWorkSecs))}</span>
                             </p>
                           </div>
@@ -785,7 +794,7 @@ export default function Dashboard() {
                             />
                           </div>
                           <p className="text-[10px] text-slate-500 mt-1">
-                            Hedefin %{Math.min(100, Math.round((payWorkSecs / Math.max(1, durationTargetSecs)) * 100))}'i tamamlandı
+                            {t('dashboardUI.payProgressPercent', { percent: Math.min(100, Math.round((payWorkSecs / Math.max(1, durationTargetSecs)) * 100)) })}
                           </p>
                           {!isShiftFinished && !isOvertime && (
                             <button
@@ -796,7 +805,7 @@ export default function Dashboard() {
                                   : 'bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25'
                               }`}
                             >
-                              {payPaused ? '▶ Devam Et' : '⏸ Duraklat'}
+                              {payPaused ? t('dashboard.payResume') : t('dashboard.payPause')}
                             </button>
                           )}
                         </div>
@@ -804,15 +813,15 @@ export default function Dashboard() {
                         <div className="mt-3 max-w-lg">
                           <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5">
                             <p>
-                              <span className="text-xs text-slate-400">Başlangıç:</span>{' '}
+                              <span className="text-xs text-slate-400">{t('dashboardUI.payStartLabel')}:</span>{' '}
                               <span className="font-mono font-bold text-slate-200 text-lg">{settings.payShiftStart}</span>
                             </p>
                             <p>
-                              <span className="text-xs text-slate-400">Bitiş:</span>{' '}
+                              <span className="text-xs text-slate-400">{t('dashboardUI.payEndLabel')}:</span>{' '}
                               <span className="font-mono font-bold text-slate-200 text-lg">{settings.payShiftEnd}</span>
                             </p>
                             <p>
-                              <span className="text-xs text-slate-400">Çalışılan:</span>{' '}
+                              <span className="text-xs text-slate-400">{t('dashboardUI.payWorked')}:</span>{' '}
                               <span className="font-mono font-semibold text-emerald-300 text-lg">{formatRemaining(workedSeconds)}</span>
                             </p>
                           </div>
@@ -825,13 +834,13 @@ export default function Dashboard() {
                                 />
                               </div>
                               <p className="text-[10px] text-slate-500 mt-1">
-                                Vardiyanın %{Math.min(100, Math.round(((realSecs - effectiveShiftStartSecs) / Math.max(1, effectiveShiftEndSecs - effectiveShiftStartSecs)) * 100))}'u geçti
+                                {t('dashboardUI.payShiftPercent', { percent: Math.min(100, Math.round(((realSecs - effectiveShiftStartSecs) / Math.max(1, effectiveShiftEndSecs - effectiveShiftStartSecs)) * 100)) })}
                               </p>
                             </>
                           )}
                           {isOvertime && (
                             <p className="text-[10px] text-amber-400 mt-2 font-semibold">
-                              ⏰ Vardiya saati doldu — geçen her saniye aşım olarak sayılıyor.
+                              {t('dashboardUI.payOvertimeWarning')}
                             </p>
                           )}
                         </div>
@@ -840,10 +849,10 @@ export default function Dashboard() {
                       {!durationMode && (
                         <div className="mt-3 flex flex-wrap gap-3 text-[11px]">
                           <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300">
-                            ☕ Kısa Mola: {Object.entries(breakUsage).filter(([k]) => ['cay', 'kahve', 'ihtiyac'].includes(k)).reduce((a, [, v]) => a + (v ?? 0), 0)} / {settings.payShortBreakMin} dk
+                            ☕ {t('dashboardUI.payShortBreak')}: {Object.entries(breakUsage).filter(([k]) => ['cay', 'kahve', 'ihtiyac'].includes(k)).reduce((a, [, v]) => a + (v ?? 0), 0)} / {settings.payShortBreakMin} {t('times.minShort')}
                           </span>
                           <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300">
-                            🍽️ Yemek Molası: {Object.entries(breakUsage).filter(([k]) => ['kahvalti', 'ogle', 'aksam'].includes(k)).reduce((a, [, v]) => a + (v ?? 0), 0)} / {settings.payMealBreakMin} dk
+                            🍽️ {t('dashboardUI.payMealBreak')}: {Object.entries(breakUsage).filter(([k]) => ['kahvalti', 'ogle', 'aksam'].includes(k)).reduce((a, [, v]) => a + (v ?? 0), 0)} / {settings.payMealBreakMin} {t('times.minShort')}
                           </span>
                         </div>
                       )}
@@ -859,7 +868,7 @@ export default function Dashboard() {
                       <div className="flex-1 min-w-0">
                         <h1 className="text-3xl font-semibold text-white tracking-wide">{currentActivity.name}</h1>
                         <p className="text-sm text-slate-400 mt-1">
-                          Saat: <span className="text-slate-200 font-medium">{currentActivity.startTime} - {currentActivity.endTime}</span> ({currentActivity.duration} dk)
+                          {t('dashboardUI.myshiftTimeLabel')}: <span className="text-slate-200 font-medium">{currentActivity.startTime} - {currentActivity.endTime}</span> ({currentActivity.duration} {t('times.minShort')})
                         </p>
                         {currentActivity.notes && (
                           <div className="mt-3 p-3 bg-white/5 border border-white/5 rounded-lg max-w-lg">
@@ -872,9 +881,9 @@ export default function Dashboard() {
                       <button
                         onClick={handleCompleteCurrentActivity}
                         className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-emerald-500/20"
-                        title="Bu aktiviteyi bitir, sıradakine geç"
+                        title={t('dashboardUI.btnCompleteTitle')}
                       >
-                        ✔ {isCurrentLast ? 'Vardiyayı Tamamla' : 'Aktiviteyi Tamamla / Geç'}
+                        ✔ {isCurrentLast ? t('dashboardUI.btnCompleteShift') : t('dashboardUI.btnCompleteActivity')}
                       </button>
                     </div>
                   </>
@@ -884,11 +893,11 @@ export default function Dashboard() {
               <div className="mt-4 flex items-center gap-4">
                 <div className="text-5xl p-4 rounded-2xl border bg-slate-500/10 border-slate-500/20">💤</div>
                 <div>
-                  <h1 className="text-2xl font-medium text-slate-300">Vardiya Henüz Başlamadı</h1>
+                  <h1 className="text-2xl font-medium text-slate-300">{t('dashboardUI.noShiftPay')}</h1>
                   <p className="text-sm text-slate-400 mt-1">
                     {mode === 'pay'
-                      ? `Vardiya saati ${settings.payShiftStart}'de başlayacak. Şu an serbestsiniz.`
-                      : 'Günün ilk aktivitesi başlamak üzere bekleniyor.'}
+                      ? t('dashboardUI.noShiftPayDesc', { time: settings.payShiftStart })
+                      : t('dashboardUI.noShiftFirstActivity')}
                   </p>
                 </div>
               </div>
@@ -897,15 +906,15 @@ export default function Dashboard() {
                 <div className="flex items-center gap-4">
                   <div className="text-5xl p-4 rounded-2xl border bg-emerald-500/10 border-emerald-500/20">🎉</div>
                   <div>
-                    <h1 className="text-2xl font-medium text-emerald-400">Bugünün Vardiyası Tamamlandı</h1>
-                    <p className="text-sm text-slate-400 mt-1">Harika bir iş çıkardınız! Geri almak isterseniz aşağıdaki butonu kullanın.</p>
+                    <h1 className="text-2xl font-medium text-emerald-400">{t('dashboardUI.pillCompleted')}</h1>
+                    <p className="text-sm text-slate-400 mt-1">{t('dashboardUI.shiftCompleteDesc')}</p>
                   </div>
                 </div>
                 <button
                   onClick={handleUncompleteShift}
                   className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors self-end md:self-auto whitespace-nowrap"
                 >
-                  ↩ Geri Al / Devam Et
+                  {t('dashboardUI.undoButton')}
                 </button>
               </div>
             ) : paybackRunning ? (
@@ -913,17 +922,17 @@ export default function Dashboard() {
                 <div className="flex items-start gap-4">
                   <div className="text-5xl p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 shadow-lg shadow-amber-500/10 animate-pulse">⏳</div>
                   <div className="flex-1 min-w-0">
-                    <h1 className="text-3xl font-semibold text-white tracking-wide">Payback (Geri Ödeme)</h1>
+                    <h1 className="text-3xl font-semibold text-white tracking-wide">{t('dashboardUI.paybackTitle')}</h1>
                     <p className="text-sm text-slate-400 mt-1">
-                      Aşım sürenizi çalışarak kapatıyorsunuz — payback sürerken aşım sayacı her saniye azalır.
+                      {t('dashboardUI.paybackDesc')}
                     </p>
                     <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1">
                       <p>
-                        <span className="text-xs text-slate-400">Kalan Aşım:</span>{' '}
+                        <span className="text-xs text-slate-400">{t('dashboardUI.remainingOvertime')}:</span>{' '}
                         <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds)}</span>
                       </p>
                       <p>
-                        <span className="text-xs text-slate-400">Ödenen:</span>{' '}
+                        <span className="text-xs text-slate-400">{t('dashboardUI.paidBack')}:</span>{' '}
                         <span className="font-mono font-semibold text-emerald-300 text-lg">{formatRemaining(paybackSeconds)}</span>
                       </p>
                     </div>
@@ -936,7 +945,7 @@ export default function Dashboard() {
                           />
                         </div>
                         <p className="text-[10px] text-slate-500 mt-1">
-                          Günün aşım logunun %{Math.round(paybackPercent)}'si ödendi
+                          {t('dashboardUI.paybackPercentDone', { percent: Math.round(paybackPercent) })}
                         </p>
                       </div>
                     )}
@@ -947,13 +956,13 @@ export default function Dashboard() {
                     onClick={stopPayback}
                     className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
                   >
-                    ⏸ Durdur
+                    {t('dashboardUI.btnStopPayback')}
                   </button>
                   <button
                     onClick={finishPayback}
                     className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-amber-500/20"
                   >
-                    ✔ Payback'i Bitir / Vardiyayı Tamamla
+                    {t('dashboardUI.btnFinishPayback')}
                   </button>
                 </div>
               </div>
@@ -962,17 +971,17 @@ export default function Dashboard() {
                 <div className="flex items-start gap-4">
                   <div className="text-5xl p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 shadow-lg shadow-amber-500/10">⏳</div>
                   <div>
-                    <h1 className="text-2xl font-semibold text-amber-300">Onay Bekliyor</h1>
+                    <h1 className="text-2xl font-semibold text-amber-300">{t('dashboardUI.pendingTitle')}</h1>
                     <p className="text-sm text-slate-400 mt-1">
                       {pendingAfter?.isBreak
-                        ? 'Mola bitti. Sıradaki etkinliğe geçmek için onayınız gerekiyor — onaylayana kadar geçen süre aşım olarak sayılıyor.'
-                        : 'Etkinlik bitti. Sıradaki etkinliğe geçmek için onayınız gerekiyor — onaylayana kadar geçen süre aşım olarak sayılıyor.'}
+                        ? t('dashboardUI.pendingBreakDesc')
+                        : t('dashboardUI.pendingActivityDesc')}
                     </p>
                     <p className="text-sm text-slate-400 mt-1">
-                      Sıradaki: <span className="text-slate-200 font-medium">{pendingActivity.icon} {pendingActivity.name}</span> — {pendingActivity.startTime}'de başlamalı
+                      {t('dashboardUI.pendingNext')}: <span className="text-slate-200 font-medium">{pendingActivity.icon} {pendingActivity.name}</span> — {pendingActivity.startTime}{t('dashboardUI.pendingStartsAt')}
                     </p>
                     <p className="mt-2">
-                      <span className="text-xs text-slate-400">Toplam Aşım:</span>{' '}
+                      <span className="text-xs text-slate-400">{t('dashboardUI.totalOvertime')}:</span>{' '}
                       <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds)}</span>
                     </p>
                   </div>
@@ -982,7 +991,7 @@ export default function Dashboard() {
                     onClick={handleConfirmPending}
                     className="inline-flex items-center gap-2 accent-solid-strong hover:accent-solid text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md accent-glow-lg"
                   >
-                    ✔ Onayla ve Geç — {pendingActivity.icon} {pendingActivity.name}
+                    {t('dashboardUI.btnConfirmAndGo')} — {pendingActivity.icon} {pendingActivity.name}
                   </button>
                 </div>
               </div>
@@ -992,22 +1001,22 @@ export default function Dashboard() {
                   <div className="text-5xl p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 shadow-lg shadow-amber-500/10">⏳</div>
                   <div>
                     <h1 className="text-2xl font-semibold text-amber-300">
-                      {isOvertime ? (durationMode ? 'Aşım: Hedef Süre Doldu' : 'Aşım: Vardiya Saati Doldu') : 'Aşım (Boşta)'}
+                      {isOvertime ? (durationMode ? t('dashboardUI.overtimeDurationTitle') : t('dashboardUI.overtimeShiftTitle')) : t('dashboardUI.overtimeIdleTitle')}
                     </h1>
                     <p className="text-sm text-slate-400 mt-1">
                       {isOvertime
                         ? durationMode
-                          ? 'Hedef süreyi doldurdunuz ancak vardiyayı tamamlamadınız. Geçen her dakika aşım olarak sayılıyor.'
-                          : 'Tüm aktiviteler bitti ancak vardiyayı tamamlamadınız. Geçen her dakika aşım olarak sayılıyor.'
-                        : 'Şu anda boştasınız. Bir aktiviteye başlayana kadar geçen süre aşım olarak sayılıyor.'}
+                          ? t('dashboardUI.overtimeDurationDesc')
+                          : t('dashboardUI.overtimeShiftDesc')
+                        : t('dashboardUI.overtimeIdleDesc')}
                     </p>
                     {nextActivity && !isOvertime && (
                       <p className="text-sm text-slate-400 mt-1">
-                        Sıradaki: <span className="text-slate-200 font-medium">{nextActivity.icon} {nextActivity.name}</span> — {nextActivity.startTime}'de başlayacak
+                        {t('dashboardUI.nextActivityStarts')}: <span className="text-slate-200 font-medium">{nextActivity.icon} {nextActivity.name}</span> — {nextActivity.startTime}{t('dashboardUI.nextActivityStartsAt')}
                       </p>
                     )}
                     <p className="mt-2">
-                      <span className="text-xs text-slate-400">Toplam Aşım:</span>{' '}
+                      <span className="text-xs text-slate-400">{t('dashboardUI.totalOvertime')}:</span>{' '}
                       <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds)}</span>
                     </p>
                   </div>
@@ -1019,14 +1028,14 @@ export default function Dashboard() {
                         onClick={handleExtendShift}
                         className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg font-semibold border border-white/5 transition-colors"
                       >
-                        ⏱ 30 Dk Uzat
+                        {t('dashboardUI.btnExtend30')}
                       </button>
                     )}
                     <button
                       onClick={handleCompleteShift}
                       className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-2 rounded-lg font-semibold transition-colors"
                     >
-                      ✔ Vardiyayı Tamamla
+                      {t('dashboardUI.btnCompleteOvertime')}
                     </button>
                   </div>
                 )}
@@ -1036,7 +1045,7 @@ export default function Dashboard() {
                       onClick={handleGoToNextActivity}
                       className="inline-flex items-center gap-2 accent-solid-strong hover:accent-solid text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md accent-glow-lg"
                     >
-                      ▶ Sıradaki Aktiviteye Geç — {nextActivity.icon} {nextActivity.name} ({nextActivity.startTime})
+                      {t('dashboardUI.btnGoToNext')} — {nextActivity.icon} {nextActivity.name} ({nextActivity.startTime})
                     </button>
                   </div>
                 )}
@@ -1050,7 +1059,7 @@ export default function Dashboard() {
               <div className="flex justify-between items-end mb-2">
                 <div>
                   <span className="text-xs text-slate-400 block uppercase tracking-wider font-semibold">
-                    {isIdle ? 'AŞIM SÜRESİ' : 'KALAN SÜRE'}
+                    {isIdle ? t('dashboardUI.overtimeDuration') : t('dashboardUI.remainingDuration')}
                   </span>
                   <span className={`text-4xl font-semibold tracking-tight ${
                     isIdle ? 'text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.2)]' : colors?.text || 'text-slate-300'
@@ -1060,7 +1069,7 @@ export default function Dashboard() {
                 </div>
                 {currentActivity && (
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                    Tamamlanma: %{Math.round(activityProgress)}
+                    {t('dashboardUI.completionPercent', { percent: Math.round(activityProgress) })}
                   </span>
                 )}
               </div>
@@ -1081,9 +1090,9 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="fluent-card p-6 flex flex-col justify-between">
               <div>
-                <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block">VARDİYA İLERLEMESİ</span>
+                <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block">{t('dashboardUI.shiftProgressHeader')}</span>
                 <span className="text-3xl font-light text-slate-200 mt-2 block">
-                  %{Math.round(shiftProgress)} Tamamlandı
+                  {t('dashboardUI.shiftProgressDone', { percent: Math.round(shiftProgress) })}
                 </span>
               </div>
               <div className="mt-4">
@@ -1100,7 +1109,7 @@ export default function Dashboard() {
 
             <div className="fluent-card p-6 flex flex-col justify-between">
               <div>
-                <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block">SIRADAKİ AKTİVİTE</span>
+                <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block">{t('dashboardUI.nextActivityHeader')}</span>
                 {nextActivity ? (
                   <div className="flex items-center gap-3 mt-3">
                     <span className="text-3xl p-2 rounded-xl bg-white/5 border border-white/5">{nextActivity.icon}</span>
@@ -1111,14 +1120,14 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <p className="text-sm text-slate-400 mt-4">
-                    {isShiftFinished || isOvertime ? 'Başka aktivite kalmadı.' : 'Vardiya Sonu'}
+                    {isShiftFinished || isOvertime ? t('dashboardUI.noMoreActivities') : t('dashboardUI.endOfShift')}
                   </p>
                 )}
               </div>
               <div className="mt-2 text-right">
                 {nextActivity && (
                   <span className="text-xs text-slate-500 font-mono">
-                    ({nextActivity.startTime}'de başlayacak)
+                    ({nextActivity.startTime}{t('dashboardUI.startsAt')})
                   </span>
                 )}
               </div>
@@ -1132,7 +1141,7 @@ export default function Dashboard() {
         {mode === 'pay' && <BreakCard />}
         {mode === 'myshift' && (
           <div className="fluent-card p-6 flex flex-col flex-1 min-h-0">
-            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block mb-4">BUGÜNÜN ZAMAN ÇİZELGESİ</span>
+            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold block mb-4">{t('dashboardUI.todayTimeline')}</span>
             <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
               <Timeline />
             </div>
@@ -1146,13 +1155,13 @@ export default function Dashboard() {
       {(mode !== 'myshift' || (activeTemplate && sortedActivities.length > 0)) && (
         <div className="lg:col-span-3 fluent-card p-6">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">📊 GÜN SONU ÖZETİ</span>
+            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">{t('dashboardUI.daySummary')}</span>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setConfirmReset(true)}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 font-medium hover:bg-amber-500/20 transition-colors"
               >
-                ↺ Aşımı Sıfırla
+                {t('dashboardUI.resetOvertime')}
               </button>
               <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white/5 border border-white/10 ${status.cls}`}>
                 {status.text}
@@ -1179,8 +1188,8 @@ export default function Dashboard() {
       {Object.keys(dailyLogs).length > 0 && (
         <div className="lg:col-span-3 fluent-card p-6">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">📅 SON 7 GÜN</span>
-            <span className="text-[10px] text-slate-600">Uygulama açıkken toplanan veriler</span>
+            <span className="text-xs uppercase tracking-widest text-slate-400 font-semibold">{t('dashboardUI.last7Days')}</span>
+            <span className="text-[10px] text-slate-600">{t('dashboardUI.collectedData')}</span>
           </div>
           <div className="grid grid-cols-7 gap-2">
             {weekDays.map((dateStr, i) => {
@@ -1204,14 +1213,14 @@ export default function Dashboard() {
                 <div key={dateStr} className="flex flex-col items-center gap-1.5">
                   <span className={`text-[10px] font-medium ${today ? 'accent-text' : 'text-slate-600'}`}>{dayLabel}</span>
                   <div
-                    title={hasData ? `Çalışılan: ${Math.floor(worked / 3600)}sa ${Math.floor((worked % 3600) / 60)}dk${idle > 0 ? ` · Aşım: ${Math.floor(idle / 3600)}sa ${Math.floor((idle % 3600) / 60)}dk` : ''}${brk > 0 ? ` · Mola: ${Math.floor(brk / 60)}dk` : ''}` : 'Veri yok'}
+                    title={hasData ? `${t('dashboardUI.workedLabel')}: ${Math.floor(worked / 3600)}${t('times.hourShort')} ${Math.floor((worked % 3600) / 60)}${t('times.minShort')}${idle > 0 ? ` · ${t('dashboardUI.overtimeShort')}: ${Math.floor(idle / 3600)}${t('times.hourShort')} ${Math.floor((idle % 3600) / 60)}${t('times.minShort')}` : ''}${brk > 0 ? ` · ${t('dashboardUI.breakShort')}: ${Math.floor(brk / 60)}${t('times.minShort')}` : ''}` : t('dashboardUI.noData')}
                     className={`w-full aspect-square rounded-lg border transition-all duration-200 flex items-center justify-center ${bgCls} ${today ? 'accent-border' : 'border-white/5'} ${completed ? 'ring-1 ring-emerald-500/50' : ''}`}
                   >
                     {completed && <span className="text-[8px] text-emerald-400">✓</span>}
                     {idle > 300 && !completed && hasData && <span className="text-[8px] text-amber-400">!</span>}
                   </div>
                   <span className={`text-[9px] font-mono ${hasData ? 'text-slate-400' : 'text-slate-700'}`}>
-                    {hasData ? `${Math.floor(worked / 3600)}sa` : '—'}
+                    {hasData ? `${Math.floor(worked / 3600)}${t('times.hourShort')}` : '—'}
                   </span>
                 </div>
               )
@@ -1219,13 +1228,13 @@ export default function Dashboard() {
           </div>
           {/* Legend */}
           <div className="flex items-center gap-3 mt-3 justify-end">
-            <span className="text-[9px] text-slate-600">Az</span>
+            <span className="text-[9px] text-slate-600">{t('dashboardUI.legendLow')}</span>
             {[0, 1, 2, 3, 4].map(lvl => (
               <div key={lvl} className={`w-3 h-3 rounded-sm ${lvl === 0 ? 'bg-slate-800' : lvl === 1 ? 'accent-heat-1' : lvl === 2 ? 'accent-heat-2' : lvl === 3 ? 'accent-heat-3' : 'accent-heat-4'}`} />
             ))}
-            <span className="text-[9px] text-slate-600">Çok</span>
-            <span className="text-[9px] text-slate-600 ml-2">✓ = Tamamlandı</span>
-            <span className="text-[9px] text-slate-600">! = Aşım var</span>
+            <span className="text-[9px] text-slate-600">{t('dashboardUI.legendHigh')}</span>
+            <span className="text-[9px] text-slate-600 ml-2">{t('dashboardUI.legendCompleted')}</span>
+            <span className="text-[9px] text-slate-600">{t('dashboardUI.legendOvertime')}</span>
           </div>
         </div>
       )}
@@ -1244,10 +1253,10 @@ export default function Dashboard() {
           <div className="p-6 pb-4">
             <div className="flex items-center gap-3">
               <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 text-lg shadow-inner shadow-amber-500/10">⏳</div>
-              <h3 className="text-lg font-semibold text-white">Aşımı Sıfırla</h3>
+              <h3 className="text-lg font-semibold text-white">{t('dashboardUI.resetOvertimeTitle')}</h3>
             </div>
             <p className="text-sm text-slate-400 mt-4 leading-relaxed">
-              Bugünkü anlık aşım sayacı <span className="text-slate-200 font-medium">sıfırlanacak</span>. Aşım sayacı her günün ilk aktivitesi başladığında zaten otomatik sıfırlanır. Yine de sıfırlamak istediğinize emin misiniz?
+              {t('dashboardUI.resetOvertimeDesc')}
             </p>
           </div>
           <div className="flex justify-end gap-3 px-6 pb-6 pt-2">
@@ -1255,13 +1264,13 @@ export default function Dashboard() {
               onClick={() => setConfirmReset(false)}
               className="px-4 py-2 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors"
             >
-              Vazgeç
+              {t('dashboardUI.btnCancel')}
             </button>
             <button
               onClick={handleResetIdle}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/30 transition-all hover:scale-[1.03] active:scale-[0.98]"
             >
-              ✔ Evet, Sıfırla
+              {t('dashboardUI.btnConfirmReset')}
             </button>
           </div>
         </div>

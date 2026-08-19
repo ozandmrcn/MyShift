@@ -35,23 +35,39 @@ export interface MotivationLine {
   highlight: string | null // a substring of `text` rendered in a contrasting cold color
 }
 
+import tr from '../i18n/tr'
+import en from '../i18n/en'
+
+export type Lang = 'tr' | 'en'
 export type TFunction = (key: string, vars?: Record<string, string | number>) => string
 
-const APP_NAMES: Record<string, string> = {
+export const locales = { tr, en } as const
+
+const APP_NAMES_COMMON: Record<string, string> = {
   chrome: 'Chrome', msedge: 'Edge', firefox: 'Firefox', opera: 'Opera', brave: 'Brave', vivaldi: 'Vivaldi',
   code: 'VS Code', cursor: 'Cursor', notepad: 'Notepad', winword: 'Word', word: 'Word',
   excel: 'Excel', powerpoint: 'PowerPoint', outlook: 'Outlook', teams: 'Teams', slack: 'Slack',
   discord: 'Discord', spotify: 'Spotify', youtube: 'YouTube', twitch: 'Twitch', steam: 'Steam',
   'epicgameslauncher': 'Epic Games', telegram: 'Telegram', whatsapp: 'WhatsApp',
   figma: 'Figma', photoshop: 'Photoshop', illustrator: 'Illustrator',
-  explorer: 'Dosya Gezgini', 'notepad++': 'Notepad++', paint: 'Paint',
-  calculator: 'Hesap Makinesi', powershell: 'PowerShell', 'windows-terminal': 'Windows Terminal',
-  taskmgr: 'Görev Yöneticisi', cmd: 'Komut İstemi', lockapp: 'Kilit Ekranı'
+  'notepad++': 'Notepad++', paint: 'Paint',
+  powershell: 'PowerShell', 'windows-terminal': 'Windows Terminal',
 }
 
-export function friendlyAppName(raw: string): string {
+const APP_NAMES_LOCALIZED: Record<Lang, Record<string, string>> = {
+  tr: { explorer: 'Dosya Gezgini', calculator: 'Hesap Makinesi', taskmgr: 'Görev Yöneticisi', cmd: 'Komut İstemi', lockapp: 'Kilit Ekranı' },
+  en: { explorer: 'File Explorer', calculator: 'Calculator', taskmgr: 'Task Manager', cmd: 'Command Prompt', lockapp: 'Lock Screen' },
+}
+
+const STOP_WORDS: Record<Lang, string[]> = {
+  tr: ['undefined', 'vardiya', 'zaman', 'sıradaki', 'bugünkü', 'biliyorsun'],
+  en: ['undefined', 'shift', 'time', 'next', 'today', 'you'],
+}
+
+export function friendlyAppName(raw: string, lang: Lang = 'tr'): string {
   const lower = raw.toLowerCase().trim()
-  if (APP_NAMES[lower]) return APP_NAMES[lower]
+  if (APP_NAMES_COMMON[lower]) return APP_NAMES_COMMON[lower]
+  if (APP_NAMES_LOCALIZED[lang][lower]) return APP_NAMES_LOCALIZED[lang][lower]
   const cleaned = lower.replace(/[^a-z0-9]/gi, ' ')
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
 }
@@ -319,18 +335,18 @@ function composeLine(pool: SlotPool, ctx: MotivationContext, avoid: Set<string>,
 
 // ─── Highlight selection ─────────────────────────────────────────────────────
 
-function pickHighlight(text: string, ctx: MotivationContext): string | null {
+function pickHighlight(text: string, ctx: MotivationContext, lang: Lang): string | null {
   // Only sometimes — "bazı kelimeler bazen farklı renk".
   if (Math.random() >= 0.45) return null
   const candidates: string[] = []
   if (ctx.currentApp) {
-    const name = friendlyAppName(ctx.currentApp)
+    const name = friendlyAppName(ctx.currentApp, lang)
     if (text.includes(name)) candidates.push(name)
   }
   if (ctx.activityName && text.includes(ctx.activityName)) candidates.push(ctx.activityName)
   if (candidates.length === 0) {
     const words = text.match(/[A-Za-zÇĞİÖŞÜçğıöşü]{5,}/g) || []
-    const meaningful = words.filter(w => !['undefined', 'vardiya', 'zaman', 'sıradaki', 'bugünkü', 'biliyorsun'].includes(w.toLowerCase()))
+    const meaningful = words.filter(w => !STOP_WORDS[lang].includes(w.toLowerCase()))
     if (meaningful.length) candidates.push(meaningful[Math.floor(Math.random() * meaningful.length)])
   }
   if (!candidates.length) return null
@@ -340,9 +356,9 @@ function pickHighlight(text: string, ctx: MotivationContext): string | null {
 
 // ─── Ambient ("fresh comment") pools ─────────────────────────────────────────
 
-function ambientPool(t: TFunction, ctx: MotivationContext): { line: string; weight: number }[] {
+function ambientPool(t: TFunction, ctx: MotivationContext, lang: Lang): { line: string; weight: number }[] {
   const v = buildVars(t, ctx)
-  const app = ctx.currentApp ? friendlyAppName(ctx.currentApp) : ''
+  const app = ctx.currentApp ? friendlyAppName(ctx.currentApp, lang) : ''
   const appSec = ctx.currentAppSeconds ?? 0
   const pool: { line: string; weight: number }[] = []
 
@@ -395,7 +411,7 @@ function buildAvoid(lastText?: string, recent?: string[]): Set<string> {
   return set
 }
 
-export function generateMotivationLine(t: TFunction, ctx: MotivationContext, lastText?: string, recent?: string[]): MotivationLine {
+export function generateMotivationLine(t: TFunction, ctx: MotivationContext, lang: Lang = 'tr', lastText?: string, recent?: string[]): MotivationLine {
   const v = buildVars(t, ctx)
   const pools = buildPools(t)
   const pool = pools[ctx.state] ?? pools['no-shift']
@@ -406,17 +422,17 @@ export function generateMotivationLine(t: TFunction, ctx: MotivationContext, las
   usedSet.add(text)
   if (usedSet.size > 400) usedSet.clear()
 
-  return { text, color: STATE_COLORS[ctx.state] ?? 'text-slate-400', highlight: pickHighlight(text, ctx) }
+  return { text, color: STATE_COLORS[ctx.state] ?? 'text-slate-400', highlight: pickHighlight(text, ctx, lang) }
 }
 
-export function generateAmbientLine(t: TFunction, ctx: MotivationContext, lastText?: string, recent?: string[]): MotivationLine {
+export function generateAmbientLine(t: TFunction, ctx: MotivationContext, lang: Lang = 'tr', lastText?: string, recent?: string[]): MotivationLine {
   const avoid = buildAvoid(lastText, recent)
-  const weighted = ambientPool(t, ctx)
+  const weighted = ambientPool(t, ctx, lang)
   const candidates = weighted.filter(w => !avoid.has(w.line))
   const chosen = (candidates.length ? candidates : weighted)[Math.floor(Math.random() * (candidates.length ? candidates : weighted).length)]
   const text = chosen.line
   const color = AMBIENT_COLORS[Math.floor(Math.random() * AMBIENT_COLORS.length)]
-  return { text, color, highlight: pickHighlight(text, ctx) }
+  return { text, color, highlight: pickHighlight(text, ctx, lang) }
 }
 
 export const COLD_COLORS = ['text-slate-400', 'text-stone-400', 'text-amber-300', 'text-orange-300', 'text-emerald-300', 'text-rose-300', 'text-violet-300']

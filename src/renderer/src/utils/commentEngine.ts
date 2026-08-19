@@ -15,7 +15,8 @@ import {
   MotivationLine,
   COLD_COLORS,
   getMoodColor,
-  TFunction
+  TFunction,
+  Lang
 } from './motivationEngine'
 
 function stripEmoji(t: string): string {
@@ -53,6 +54,7 @@ export async function generateComment(t: TFunction, ctx: MotivationContext, opts
   const recent = opts.recent ?? []
   const api = window.electronAPI
   const settings = useShiftStore.getState().settings
+  const lang: Lang = settings.language ?? 'tr'
 
   if (api?.ai && settings.commentProvider !== 'offline') {
     try {
@@ -90,6 +92,6 @@ export async function generateComment(t: TFunction, ctx: MotivationContext, opts
   }
 
   return opts.ambient
-    ? generateAmbientLine(t, ctx, opts.lastText, recent)
-    : generateMotivationLine(t, ctx, opts.lastText, recent)
+    ? generateAmbientLine(t, ctx, lang, opts.lastText, recent)
+    : generateMotivationLine(t, ctx, lang, opts.lastText, recent)
 }

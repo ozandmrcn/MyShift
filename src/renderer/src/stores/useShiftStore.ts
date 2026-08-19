@@ -253,7 +253,7 @@ const defaultSettings: Settings = {
   launchWithWindows: false,
   startMinimized: false,
   minimizeToTray: true,
-  autoMinimizeToTray: true,
+  autoMinimizeToTray: false,
   defaultNotificationSound: 'default',
   birthday: '',
   theme: 'mavi',

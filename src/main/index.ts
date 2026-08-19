@@ -140,7 +140,7 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     // If startMinimized setting is enabled (or launched with --minimized), hide the window initially
     const startMinimized = store.get('settings.startMinimized', false) as boolean
-    const autoMinimizeToTray = store.get('settings.autoMinimizeToTray', true) as boolean
+    const autoMinimizeToTray = store.get('settings.autoMinimizeToTray', false) as boolean
     const launchedMinimized = startMinimized || process.argv.includes('--minimized')
     if (!launchedMinimized) {
       mainWindow?.show()

@@ -16,14 +16,16 @@ function fmtClock(ts: number): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`
 }
 
-function fmtDur(totalSec: number): string {
-  if (!totalSec || totalSec <= 0) return '0 dk'
+function fmtDur(totalSec: number, t: (key: string) => string, language: string): string {
+  if (!totalSec || totalSec <= 0) return '0 ' + t('shiftEditorUI.minLabel')
   const mins = Math.round(totalSec / 60)
   const h = Math.floor(mins / 60)
   const m = mins % 60
-  if (h === 0) return `${m} dk`
-  if (m === 0) return `${h} sa`
-  return `${h} sa ${m} dk`
+  const minLabel = t('shiftEditorUI.minLabel')
+  const hourLabel = language === 'tr' ? 'sa' : 'h'
+  if (h === 0) return `${m} ${minLabel}`
+  if (m === 0) return `${h} ${hourLabel}`
+  return `${h} ${hourLabel} ${m} ${minLabel}`
 }
 
 function fmtDate(iso: string): string {
@@ -32,7 +34,7 @@ function fmtDate(iso: string): string {
 }
 
 export default function ObserveView() {
-  const { t } = useT()
+  const { t, language } = useT()
   const api = window.electronAPI
   const [status, setStatus] = useState<SurveillanceSnapshot | null>(null)
   const [now, setNow] = useState(Date.now())
@@ -165,7 +167,7 @@ export default function ObserveView() {
                     )}
                   </div>
                   <span className="text-[10px] text-slate-600 flex-shrink-0 pt-0.5">
-                    {i === 0 && s.span > 0 ? `${fmtDur(s.span)}` : ''}
+                    {i === 0 && s.span > 0 ? `${fmtDur(s.span, t, language)}` : ''}
                   </span>
                 </div>
               ))}
@@ -178,7 +180,7 @@ export default function ObserveView() {
           <div className="flex items-end justify-between mb-3">
             <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">{t('observe.todayLabel')}</span>
             <span className="text-[11px] text-slate-400">
-              {t('observe.todaySummary', { active: today ? fmtDur(today.totalSeconds) : '0 dk', samples: today?.samples ?? 0 })}
+              {t('observe.todaySummary', { active: today ? fmtDur(today.totalSeconds, t, language) : '0 ' + t('shiftEditorUI.minLabel'), samples: today?.samples ?? 0 })}
               {(today?.typedChars ?? 0) > 0 && <span className="text-amber-400/80"> • ⌨ {today?.typedChars ?? 0} {t('observe.typedChars', { count: today?.typedChars ?? 0 })}</span>}
             </span>
           </div>
@@ -193,7 +195,7 @@ export default function ObserveView() {
                   <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
                     <div className="h-full rounded-full bg-amber-500/70" style={{ width: `${(a.seconds / maxAppSec) * 100}%` }} />
                   </div>
-                  <span className="w-14 text-[10px] text-slate-500 text-right flex-shrink-0">{fmtDur(a.seconds)}</span>
+                  <span className="w-14 text-[10px] text-slate-500 text-right flex-shrink-0">{fmtDur(a.seconds, t, language)}</span>
                 </div>
               ))}
             </div>
@@ -205,7 +207,7 @@ export default function ObserveView() {
               {status.recentDays.slice(-7).map(d => (
                 <div key={d.date} className="flex items-center justify-between">
                   <span className="text-[11px] text-slate-400">{fmtDate(d.date)}</span>
-                  <span className="text-[11px] text-slate-500">{fmtDur(d.totalSeconds)} • {d.samples} {t('observe.feedRecords')}</span>
+                  <span className="text-[11px] text-slate-500">{fmtDur(d.totalSeconds, t, language)} • {d.samples} {t('observe.feedRecords')}</span>
                 </div>
               ))}
             </div>

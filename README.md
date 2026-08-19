@@ -19,16 +19,16 @@ Everything runs locally on your machine. No cloud, no accounts, no data leaves y
 | Mode | Description |
 |------|-------------|
 | **MyShift** | Unlimited custom templates with weekday/date/holiday scheduling, quick presets, JSON import/export |
-| **Pay** | Fixed window (start–end time) or target duration mode; overtime (aşım) tracking with automatic payback |
+| **Pay** | Fixed window (start–end time) or target duration mode; overtime tracking with automatic payback |
 | **Chrono** | Manual chronograph — start/stop work and breaks with buttons, no fixed schedule required |
 
 ### Core Engine
 
 - **Live shift engine** — current/next activity, remaining time, and progress update every second
-- **Confirmation gate** — each work activity after the first requires explicit confirmation; unconfirmed time counts as aşım
-- **Aşım (idle) tracking** — measures time spent idle while working is expected; auto-resets at day start
-- **Payback** — earn back your aşım time by working; finishes automatically when paid matches owed (no over-payment)
-- **Break management** — short breaks (çay/kahve) and meal breaks with per-day budgets; over-budget breaks count as aşım
+- **Confirmation gate** — each work activity after the first requires explicit confirmation; unconfirmed time counts as overtime
+- **Overtime (idle) tracking** — measures time spent idle while working is expected; auto-resets at day start
+- **Payback** — earn back your overtime time by working; finishes automatically when paid matches owed (no over-payment)
+- **Break management** — short breaks (tea/coffee) and meal breaks with per-day budgets; over-budget breaks count as overtime
 - **Chrono work/break reminders** — configurable alerts for continuous work or long breaks
 
 ### Dashboard & UI
@@ -51,13 +51,13 @@ Everything runs locally on your machine. No cloud, no accounts, no data leaves y
 
 - **Windows notifications** — shift start, activity transitions, break reminders, completion
 - **Synthesized sounds** — Web Audio API for notification sounds (bell, digital, default)
-- **System tray** — live status tooltip with actions: Show, Complete Shift, Reset Aşım, Quit
+- **System tray** — live status tooltip with actions: Show, Complete Shift, Reset Overtime, Quit
 - **Startup options** — launch with Windows, start minimized, auto-minimize to tray
 - **Turkish public holidays** — one-click holiday template extension (2026 dates included)
 
 ### Customization
 
-- **6 color themes** — Gece Mavisi, Zümrüt, Turkuaz, Menekşe, Kiraz, Kehribar
+- **6 color themes** — Night Blue, Emerald, Turquoise, Violet, Cherry, Amber
 - **Birthday mode** — set your birthday as a day-off in the schedule
 - **Time offset** — rewind/fast-forward the clock for testing or replay
 - **Motivation engine** — context-aware status lines that change based on shift progress and idle time

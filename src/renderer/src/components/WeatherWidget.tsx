@@ -51,7 +51,7 @@ interface WeatherData {
 
 export default function WeatherWidget({ compact }: { compact?: boolean }) {
   const settings = useShiftStore((s) => s.settings)
-  const { t } = useT()
+  const { t, language } = useT()
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -102,8 +102,8 @@ export default function WeatherWidget({ compact }: { compact?: boolean }) {
         <div className={`flex ${compact ? 'flex-col items-start gap-1' : 'items-center gap-3'}`}>
           <span className={compact ? 'text-lg' : 'text-2xl'}>🌤️</span>
           <div>
-            <p className={`${compact ? 'text-[10px]' : 'text-xs'} font-medium text-slate-300`}>Hava Durumu</p>
-            <p className={`${compact ? 'text-[9px]' : 'text-[10px]'} text-slate-500 ${compact ? '' : 'mt-0.5'}`}>Ayarlar'dan bir şehir seçin.</p>
+            <p className={`${compact ? 'text-[10px]' : 'text-xs'} font-medium text-slate-300`}>{t('dashboardUI.weatherTitle')}</p>
+            <p className={`${compact ? 'text-[9px]' : 'text-[10px]'} text-slate-500 ${compact ? '' : 'mt-0.5'}`}>{t('dashboardUI.weatherSetup')}</p>
           </div>
         </div>
       </div>
@@ -114,7 +114,9 @@ export default function WeatherWidget({ compact }: { compact?: boolean }) {
   const info = weather ? wmoCode(weather.weatherCode, night, t) : null
 
   function windDir(deg: number): string {
-    const dirs = ['K', 'KD', 'D', 'GD', 'G', 'GB', 'B', 'KB']
+    const dirs = language === 'tr'
+      ? ['K', 'KD', 'D', 'GD', 'G', 'GB', 'B', 'KB']
+      : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
     return dirs[Math.round(deg / 45) % 8]
   }
 
@@ -127,7 +129,7 @@ export default function WeatherWidget({ compact }: { compact?: boolean }) {
       )}
 
       <div className="flex items-center justify-between mb-3 relative z-10">
-        <span className={`${compact ? 'text-[9px]' : 'text-xs'} uppercase tracking-widest text-slate-400 font-semibold`}>HAVA DURUMU</span>
+        <span className={`${compact ? 'text-[9px]' : 'text-xs'} uppercase tracking-widest text-slate-400 font-semibold`}>{t('dashboardUI.weatherHeader')}</span>
         <button
           onClick={fetchWeather}
           disabled={loading}

@@ -2,22 +2,20 @@ import { useState } from 'react'
 import { useShiftStore } from '../stores/useShiftStore'
 import { formatRemaining } from '../hooks/useLiveShiftEngine'
 import { useT } from '../i18n/useT'
-
-const MONTH_NAMES = [
-  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-  'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
-]
-const WEEKDAY_NAMES = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
-const WEEKDAY_SHORT = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt']
-
-function formatDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  const date = new Date(y, m - 1, d)
-  return `${WEEKDAY_NAMES[date.getDay()]}, ${d} ${MONTH_NAMES[m - 1]} ${y}`
-}
+import { getMonthNames, getWeekdayNames, getWeekdayShort } from '../utils/dateConstants'
 
 export default function History() {
-  const { t } = useT()
+  const { t, language } = useT()
+
+  const MONTH_NAMES = getMonthNames(language)
+  const WEEKDAY_NAMES = getWeekdayNames(language)
+  const WEEKDAY_SHORT = getWeekdayShort(language)
+
+  function formatDate(dateStr: string): string {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    const date = new Date(y, m - 1, d)
+    return `${WEEKDAY_NAMES[date.getDay()]}, ${d} ${MONTH_NAMES[m - 1]} ${y}`
+  }
   const { dailyLogs, updateDayLog, deleteDayLog } = useShiftStore()
 
   // Inline editing state: which date is being edited + draft minutes
@@ -189,7 +187,7 @@ export default function History() {
                       {day.dayLabel}
                     </span>
                     <span className="text-[9px] text-slate-600 font-mono">
-                      {hasData ? `${Math.floor(day.worked / 3600)}sa` : '—'}
+                      {hasData ? `${Math.floor(day.worked / 3600)}${t('times.hours')}` : '—'}
                     </span>
                   </div>
                 </div>

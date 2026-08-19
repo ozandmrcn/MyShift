@@ -2,36 +2,38 @@ import { useState, useEffect } from 'react'
 import { useShiftStore, ShiftTemplate, Activity, calculateDuration } from '../stores/useShiftStore'
 import { playSound } from '../utils/soundEffects'
 import { useT } from '../i18n/useT'
+import tr from '../i18n/tr'
+import en from '../i18n/en'
 
 // ─── Quick Presets ─────────────────────────────────────────────────────────────
-const ACTIVITY_PRESETS: Partial<Activity>[] = [
-  { name: 'Çay Kahve Molası', icon: '☕', color: 'orange', duration: 15, isBreak: true },
-  { name: 'Kahvaltı', icon: '🍳', color: 'orange', duration: 30, isBreak: true },
-  { name: 'Yemek Molası', icon: '🍔', color: 'amber', duration: 30, isBreak: true },
-  { name: 'Çalışma Seansı', icon: '💻', color: 'blue', duration: 90 },
-  { name: 'Toplantı', icon: '💬', color: 'purple', duration: 60 },
-  { name: 'Spor / Egzersiz', icon: '🏃', color: 'red', duration: 45 },
-  { name: 'Okuma', icon: '📚', color: 'indigo', duration: 30 },
-  { name: 'Uyku / Dinlenme', icon: '🛌', color: 'indigo', duration: 480 },
-]
+function getActivityPresets(t: (key: string) => string): Partial<Activity>[] {
+  return [
+    { name: t('shiftEditorUI.presetTea'), icon: '☕', color: 'orange', duration: 15, isBreak: true },
+    { name: t('shiftEditorUI.presetBreakfast'), icon: '🍳', color: 'orange', duration: 30, isBreak: true },
+    { name: t('shiftEditorUI.presetMeal'), icon: '🍔', color: 'amber', duration: 30, isBreak: true },
+    { name: t('shiftEditorUI.presetWork'), icon: '💻', color: 'blue', duration: 90 },
+    { name: t('shiftEditorUI.presetMeeting'), icon: '💬', color: 'purple', duration: 60 },
+    { name: t('shiftEditorUI.presetExercise'), icon: '🏃', color: 'red', duration: 45 },
+    { name: t('shiftEditorUI.presetReading'), icon: '📚', color: 'indigo', duration: 30 },
+    { name: t('shiftEditorUI.presetRest'), icon: '🛌', color: 'indigo', duration: 480 },
+  ]
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const EMOJI_OPTIONS = ['💻', '☕', '🍔', '📚', '🏃', '😴', '🚗', '🎮', '🎨', '🎵', '🏢', '💬', '🧹', '🛒', '🏋️', '🧘', '🛌', '🍕', '✏️', '📝', '🎯', '🍳', '🌿', '🏖️']
 const COLOR_OPTIONS = [
-  { key: 'blue',    label: 'Mavi',   bg: 'accent-solid',   ring: 'accent-ring',   card: 'accent-soft accent-border-soft accent-text-soft' },
-  { key: 'orange',  label: 'Turuncu',bg: 'bg-orange-500', ring: 'ring-orange-400', card: 'bg-orange-500/10 border-orange-500/30 text-orange-300' },
-  { key: 'emerald', label: 'Yeşil',  bg: 'bg-emerald-500',ring: 'ring-emerald-400',card: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' },
-  { key: 'purple',  label: 'Mor',    bg: 'bg-purple-500', ring: 'ring-purple-400', card: 'bg-purple-500/10 border-purple-500/30 text-purple-300' },
-  { key: 'red',     label: 'Kırmızı',bg: 'bg-rose-500',   ring: 'ring-rose-400',   card: 'bg-rose-500/10 border-rose-500/30 text-rose-300' },
-  { key: 'amber',   label: 'Sarı',   bg: 'bg-amber-500',  ring: 'ring-amber-400',  card: 'bg-amber-500/10 border-amber-500/30 text-amber-300' },
-  { key: 'indigo',  label: 'İndigo', bg: 'bg-indigo-500', ring: 'ring-indigo-400', card: 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' },
+  { key: 'blue',    labelKey: 'shiftEditorUI.colorBlue',   bg: 'accent-solid',   ring: 'accent-ring',   card: 'accent-soft accent-border-soft accent-text-soft' },
+  { key: 'orange',  labelKey: 'shiftEditorUI.colorOrange', bg: 'bg-orange-500', ring: 'ring-orange-400', card: 'bg-orange-500/10 border-orange-500/30 text-orange-300' },
+  { key: 'emerald', labelKey: 'shiftEditorUI.colorGreen',  bg: 'bg-emerald-500',ring: 'ring-emerald-400',card: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' },
+  { key: 'purple',  labelKey: 'shiftEditorUI.colorPurple', bg: 'bg-purple-500', ring: 'ring-purple-400', card: 'bg-purple-500/10 border-purple-500/30 text-purple-300' },
+  { key: 'red',     labelKey: 'shiftEditorUI.colorRed',    bg: 'bg-rose-500',   ring: 'ring-rose-400',   card: 'bg-rose-500/10 border-rose-500/30 text-rose-300' },
+  { key: 'amber',   labelKey: 'shiftEditorUI.colorAmber',  bg: 'bg-amber-500',  ring: 'ring-amber-400',  card: 'bg-amber-500/10 border-amber-500/30 text-amber-300' },
+  { key: 'indigo',  labelKey: 'shiftEditorUI.colorIndigo', bg: 'bg-indigo-500', ring: 'ring-indigo-400', card: 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' },
 ]
-const WEEKDAY_NAMES = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt']
-const WEEKDAY_FULL = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
 const SOUND_OPTIONS = [
-  { key: 'default', label: 'Varsayılan' },
-  { key: 'bell',    label: 'Çan' },
-  { key: 'digital', label: 'Dijital' },
+  { key: 'default', labelKey: 'shiftEditorUI.soundDefault' },
+  { key: 'bell',    labelKey: 'shiftEditorUI.soundBell' },
+  { key: 'digital', labelKey: 'shiftEditorUI.soundDigital' },
 ]
 
 function getColorCard(colorKey: string) {
@@ -58,6 +60,7 @@ function ActivityCard({
   isFirst: boolean
   isLast: boolean
 }) {
+  const { t } = useT()
   const cardColor = getColorCard(act.color)
 
   return (
@@ -75,9 +78,9 @@ function ActivityCard({
           <p className="text-sm font-semibold text-slate-100 truncate">{act.name}</p>
           <p className="text-[11px] text-slate-400 font-mono mt-0.5">
             {act.startTime} → {act.endTime}
-            <span className="ml-2 text-slate-500">{act.duration} dk</span>
+            <span className="ml-2 text-slate-500">{act.duration} {t('shiftEditorUI.minLabel')}</span>
             {act.isBreak && (
-              <span className="ml-2 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-300">🧘 Mola</span>
+              <span className="ml-2 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-300">🧘 {t('shiftEditorUI.breakBadge')}</span>
             )}
           </p>
           {act.notes && (
@@ -98,13 +101,13 @@ function ActivityCard({
           onClick={onMoveUp}
           disabled={isFirst}
           className="flex-1 px-2.5 text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-colors disabled:opacity-20 disabled:cursor-not-allowed text-[11px]"
-          title="Yukarı Taşı"
+          title={t('shiftEditorUI.moveUpTitle')}
         >▲</button>
         <button
           onClick={onMoveDown}
           disabled={isLast}
           className="flex-1 px-2.5 text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-colors disabled:opacity-20 disabled:cursor-not-allowed text-[11px]"
-          title="Aşağı Taşı"
+          title={t('shiftEditorUI.moveDownTitle')}
         >▼</button>
       </div>
 
@@ -112,12 +115,12 @@ function ActivityCard({
         <button
           onClick={onDuplicate}
           className="flex-1 px-2.5 text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-colors text-[11px]"
-          title="Çoğalt"
+          title={t('shiftEditorUI.duplicateTitle')}
         >⧉</button>
         <button
           onClick={onEdit}
           className="flex-1 px-2.5 text-slate-400 hover:accent-text-soft accent-soft-hover transition-colors text-[11px]"
-          title="Düzenle"
+          title={t('shiftEditorUI.editTitle')}
         >✎</button>
       </div>
 
@@ -146,6 +149,7 @@ function ActivityModal({
 }) {
   const { t } = useT()
   const [form, setForm] = useState<Activity>(activity)
+  const ACTIVITY_PRESETS = getActivityPresets(t)
 
   const applyPreset = (preset: Partial<Activity>) => {
     // Calculate end time based on current start + preset duration
@@ -168,7 +172,7 @@ function ActivityModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (form.startTime >= form.endTime) {
-      alert('Başlangıç saati bitiş saatinden önce olmalıdır.')
+      alert(t('shiftEditorUI.startTimeError'))
       return
     }
     onSave({ ...form, duration: calculateDuration(form.startTime, form.endTime) })
@@ -183,7 +187,7 @@ function ActivityModal({
         {/* Modal header */}
         <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
           <h3 className="text-base font-semibold text-white">
-            {isNew ? '+ Yeni Aktivite' : '✎ Aktiviteyi Düzenle'}
+            {isNew ? t('shiftEditorUI.newActivity') : t('shiftEditorUI.editActivity')}
           </h3>
           <button
             onClick={onClose}
@@ -196,7 +200,7 @@ function ActivityModal({
           {isNew && (
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                ⚡ Hızlı Şablonlar
+                {t('shiftEditorUI.quickTemplates')}
               </label>
               <div className="flex flex-wrap gap-1.5">
                 {ACTIVITY_PRESETS.map((p, i) => (
@@ -208,7 +212,7 @@ function ActivityModal({
                   >
                     <span>{p.icon}</span>
                     <span>{p.name}</span>
-                    <span className="text-slate-600 text-[9px]">{p.duration}dk</span>
+                    <span className="text-slate-600 text-[9px]">{p.duration}{t('shiftEditorUI.minLabel')}</span>
                   </button>
                 ))}
               </div>
@@ -218,7 +222,7 @@ function ActivityModal({
           {/* Name */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-              Aktivite Adı
+              {t('shiftEditorUI.activityName')}
             </label>
             <input
               type="text"
@@ -226,7 +230,7 @@ function ActivityModal({
               value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
               className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:accent-border transition-colors"
-              placeholder="Örn: Kahvaltı, Çalışma Seansı..."
+              placeholder={t('shiftEditorUI.activityNamePlaceholder')}
             />
           </div>
 
@@ -234,7 +238,7 @@ function ActivityModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                Başlangıç Saati
+                {t('shiftEditorUI.startTime')}
               </label>
               <input
                 type="time"
@@ -246,7 +250,7 @@ function ActivityModal({
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                Bitiş Saati
+                {t('shiftEditorUI.endTime')}
               </label>
               <input
                 type="time"
@@ -265,7 +269,7 @@ function ActivityModal({
               <span className="text-xs text-slate-400">
                 {t('shiftEditor.duration')}: <span className="text-slate-200 font-semibold font-mono">
                   {calculateDuration(form.startTime, form.endTime)} {t('shiftEditor.durationMinutes')}
-                  {' '}({Math.floor(calculateDuration(form.startTime, form.endTime) / 60) > 0 && `${Math.floor(calculateDuration(form.startTime, form.endTime) / 60)} sa `}{calculateDuration(form.startTime, form.endTime) % 60 > 0 && `${calculateDuration(form.startTime, form.endTime) % 60} dk`})
+                  {' '}({Math.floor(calculateDuration(form.startTime, form.endTime) / 60) > 0 && `${Math.floor(calculateDuration(form.startTime, form.endTime) / 60)} ${t('shiftEditorUI.hoursShort')} `}{calculateDuration(form.startTime, form.endTime) % 60 > 0 && `${calculateDuration(form.startTime, form.endTime) % 60} ${t('shiftEditorUI.minLabel')}`})
                 </span>
               </span>
             </div>
@@ -274,7 +278,7 @@ function ActivityModal({
           {/* Emoji picker */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-              İkon
+              {t('shiftEditorUI.icon')}
             </label>
             <div className="grid grid-cols-8 gap-1.5 p-2.5 bg-slate-950 rounded-lg border border-white/5">
               {EMOJI_OPTIONS.map(emo => (
@@ -305,7 +309,7 @@ function ActivityModal({
                   key={col.key}
                   type="button"
                   onClick={() => setForm({ ...form, color: col.key })}
-                  title={col.label}
+                  title={t(col.labelKey)}
                   className={`w-7 h-7 rounded-full ${col.bg} border-2 transition-all hover:scale-110 ${
                     form.color === col.key
                       ? `ring-2 ${col.ring} ring-offset-1 ring-offset-slate-900 scale-110 border-white/30`
@@ -319,8 +323,8 @@ function ActivityModal({
           {/* Mola mı? */}
           <div className="p-3 bg-slate-800/40 rounded-xl border border-white/5 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-300">🧘 Mola mı?</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">Mola sayılır, çalışma süresine eklenmez</p>
+              <p className="text-sm font-medium text-slate-300">{t('shiftEditorUI.breakQuestion')}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">{t('shiftEditorUI.breakDescription')}</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
@@ -337,8 +341,8 @@ function ActivityModal({
           <div className="p-3 bg-slate-800/40 rounded-xl border border-white/5 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-300">Bildirim</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Aktivite başladığında bildirim gönder</p>
+                <p className="text-sm font-medium text-slate-300">{t('shiftEditorUI.notification')}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">{t('shiftEditorUI.notificationDesc')}</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -355,7 +359,7 @@ function ActivityModal({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                    Bildirim Sesi
+                    {t('shiftEditorUI.notificationSound')}
                   </label>
                   <button
                     type="button"
@@ -363,7 +367,7 @@ function ActivityModal({
                     disabled={form.notificationSound === 'none'}
                     className="text-[10px] font-medium px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    ▶ Test Et
+                    {t('shiftEditorUI.testSound')}
                   </button>
                 </div>
                 <div className="flex gap-1.5">
@@ -378,7 +382,7 @@ function ActivityModal({
                           : 'bg-slate-900 border-white/5 text-slate-400 hover:bg-slate-800'
                       }`}
                     >
-                      {s.label}
+                      {t(s.labelKey)}
                     </button>
                   ))}
                 </div>
@@ -389,12 +393,12 @@ function ActivityModal({
           {/* Notes */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-              Notlar (Opsiyonel)
+              {t('shiftEditorUI.notesOptional')}
             </label>
             <textarea
               value={form.notes || ''}
               onChange={e => setForm({ ...form, notes: e.target.value })}
-              placeholder="Aktivite hakkında not ekleyin..."
+              placeholder={t('shiftEditorUI.notesPlaceholder')}
               rows={2}
               className="w-full bg-slate-950 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:accent-border transition-colors resize-none"
             />
@@ -413,7 +417,7 @@ function ActivityModal({
               type="submit"
               className="flex-1 py-2.5 accent-solid-strong hover:accent-solid text-white rounded-xl text-sm font-semibold transition-colors shadow-lg accent-glow-lg"
             >
-              {isNew ? 'Aktivite Ekle' : t('shiftEditor.save')}
+              {isNew ? t('shiftEditorUI.addActivity') : t('shiftEditor.save')}
             </button>
           </div>
         </form>
@@ -424,7 +428,8 @@ function ActivityModal({
 
 // ─── Main ShiftEditor ──────────────────────────────────────────────────────────
 export default function ShiftEditor() {
-  const { t } = useT()
+  const { t, language } = useT()
+  const locale = language === 'tr' ? tr : en
   const {
     templates,
     saveTemplate,
@@ -452,16 +457,16 @@ export default function ShiftEditor() {
 
   // ── Template handlers ──────────────────────────────────────────────────────
   const handleCreate = () => {
-    const t: ShiftTemplate = {
+    const newTemplate: ShiftTemplate = {
       id: crypto.randomUUID(),
-      name: 'Yeni Vardiya Şablonu',
+      name: t('shiftEditorUI.newTemplate'),
       activities: [],
       weekdays: [1, 2, 3, 4, 5],
       customDates: [],
       isActive: false
     }
-    saveTemplate(t)
-    setSelectedId(t.id)
+    saveTemplate(newTemplate)
+    setSelectedId(newTemplate.id)
   }
 
   const handleToggleWeekday = (day: number) => {
@@ -488,7 +493,7 @@ export default function ShiftEditor() {
   const handleAddActivity = () => {
     setEditingActivity({
       id: crypto.randomUUID(),
-      name: 'Yeni Aktivite',
+      name: t('shiftEditorUI.newActivityName'),
       icon: '💻',
       color: 'blue',
       startTime: '09:00',
@@ -532,7 +537,7 @@ export default function ShiftEditor() {
     const dup: Activity = {
       ...act,
       id: crypto.randomUUID(),
-      name: `${act.name} (Kopya)`,
+      name: `${act.name} ${t('shiftEditorUI.copySuffix')}`,
       startTime: newStart,
       endTime: newEnd,
       duration: calculateDuration(newStart, newEnd)
@@ -580,7 +585,7 @@ export default function ShiftEditor() {
     const reader = new FileReader()
     reader.onload = async (evt) => {
       const res = await importTemplates(evt.target?.result as string)
-      alert(res.success ? `${res.count} şablon aktarıldı!` : `Hata: ${res.error}`)
+      alert(res.success ? t('shiftEditorUI.importSuccess', { count: res.count }) : t('shiftEditorUI.importError', { error: res.error ?? '' }))
     }
     reader.readAsText(file)
   }
@@ -614,19 +619,19 @@ export default function ShiftEditor() {
 
         {mode === 'pay' && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[11px] text-amber-200 leading-relaxed">
-            <span className="font-semibold">💼 Pay Modu aktif.</span> Bu modda sabit başlangıç/bitiş saati ve mola bütçeleri kullanılır; aşağıdaki şablonlar uygulanmaz. Mola kaydı Panel sayfasından yapılır.
+            {t('shiftEditorUI.payModeActive')}
           </div>
         )}
         {mode === 'chrono' && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[11px] text-amber-200 leading-relaxed">
-            <span className="font-semibold">⏱️ Krono Modu aktif.</span> Bu modda manuel kronometre kullanılır; şablonlar uygulanmaz. Çalışma/mola başlatma/durdurma Dashboard sayfasından yapılır.
+            {t('shiftEditorUI.chronoModeActive')}
           </div>
         )}
 
         {/* Template list */}
         <div className="fluent-card p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-slate-200 text-sm">Şablonlarım</h3>
+            <h3 className="font-semibold text-slate-200 text-sm">{t('shiftEditorUI.myTemplates')}</h3>
             <button
               onClick={handleCreate}
               className="text-xs accent-solid-strong hover:accent-solid text-white px-2.5 py-1.5 rounded-lg transition-colors font-medium"
@@ -636,33 +641,33 @@ export default function ShiftEditor() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            {templates.map(t => (
+            {templates.map(tpl => (
               <button
-                key={t.id}
-                onClick={() => setSelectedId(t.id)}
+                key={tpl.id}
+                onClick={() => setSelectedId(tpl.id)}
                 className={`w-full text-left p-2.5 rounded-lg border transition-all duration-150 ${
-                  selectedId === t.id
+                  selectedId === tpl.id
                     ? 'accent-soft accent-border text-white'
                     : 'bg-white/2 border-white/5 text-slate-400 hover:bg-white/5 hover:text-slate-200'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-sm truncate">{t.name}</span>
+                  <span className="font-medium text-sm truncate">{tpl.name}</span>
                   <span className={`text-[9px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
-                    t.isActive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'
+                    tpl.isActive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'
                   }`}>
-                    {t.isActive ? 'Aktif' : 'Pasif'}
+                    {tpl.isActive ? t('shiftEditorUI.active') : t('shiftEditorUI.passive')}
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-600 mt-1">
-                  {t.activities.length} Aktivite
+                  {tpl.activities.length} {t('shiftEditorUI.activityWord')}
                 </p>
               </button>
             ))}
 
             {templates.length === 0 && (
               <p className="text-xs text-slate-600 text-center py-4">
-                Henüz şablon yok. + Yeni ile başlayın.
+                {t('shiftEditorUI.noTemplatesYet')}
               </p>
             )}
           </div>
@@ -671,7 +676,7 @@ export default function ShiftEditor() {
         {/* Template settings */}
         {selected && (
           <div className="fluent-card p-4 flex flex-col gap-4">
-            <h3 className="font-semibold text-slate-200 text-sm border-b border-white/5 pb-2">Şablon Ayarları</h3>
+            <h3 className="font-semibold text-slate-200 text-sm border-b border-white/5 pb-2">{t('shiftEditorUI.templateSettings')}</h3>
 
             {/* Name */}
             <div>
@@ -687,8 +692,8 @@ export default function ShiftEditor() {
             {/* Active toggle */}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-300 font-medium">Etkin</p>
-                <p className="text-[10px] text-slate-500">Zamanlayıcıda aktif olsun</p>
+                <p className="text-sm text-slate-300 font-medium">{t('shiftEditorUI.templateActive')}</p>
+                <p className="text-[10px] text-slate-500">{t('shiftEditorUI.templateActiveDesc')}</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -703,20 +708,20 @@ export default function ShiftEditor() {
 
             {/* Weekdays */}
             <div>
-              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">Günler</label>
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">{t('shiftEditorUI.weekdays')}</label>
               <div className="flex gap-1 flex-wrap">
                 {[1, 2, 3, 4, 5, 6, 0].map(day => (
                   <button
                     key={day}
                     onClick={() => handleToggleWeekday(day)}
-                    title={WEEKDAY_FULL[day]}
+                    title={locale.shiftEditorUI.weekdayFull[day]}
                     className={`flex-1 min-w-[32px] py-1 rounded-lg text-[10px] font-semibold border transition-all ${
                       selected.weekdays.includes(day)
                         ? 'accent-solid-strong accent-border text-white'
                         : 'bg-slate-900 border-white/5 text-slate-500 hover:bg-slate-800'
                     }`}
                   >
-                    {WEEKDAY_NAMES[day]}
+                    {locale.shiftEditorUI.weekdayShort[day]}
                   </button>
                 ))}
               </div>
@@ -724,12 +729,12 @@ export default function ShiftEditor() {
 
             {/* Custom dates */}
             <div className="border-t border-white/5 pt-3 flex flex-col gap-2">
-              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Özel Tarihler</label>
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{t('shiftEditorUI.customDates')}</label>
               <button
                 onClick={() => addTurkishHolidays(selected.id)}
                 className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-1.5 rounded-lg border border-white/5 font-medium transition-colors"
               >
-                🇹🇷 TR Resmi Tatilleri Ekle
+                {t('shiftEditorUI.addHolidays')}
               </button>
               <div className="flex gap-1.5">
                 <input
@@ -763,18 +768,18 @@ export default function ShiftEditor() {
                 onClick={() => duplicateTemplate(selected.id)}
                 className="flex-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-lg font-medium"
               >
-                ⧉ Kopyala
+                {t('shiftEditorUI.copyBtn')}
               </button>
               <button
                 onClick={() => {
-                  if (confirm('Bu şablonu silmek istediğinize emin misiniz?')) {
+                  if (confirm(t('shiftEditorUI.templateDeleteConfirm'))) {
                     deleteTemplate(selected.id)
                     setSelectedId(null)
                   }
                 }}
                 className="flex-1 text-xs bg-rose-950/40 hover:bg-rose-900/50 text-rose-400 py-2 rounded-lg border border-rose-900/30 font-medium"
               >
-                🗑 Sil
+                {t('shiftEditorUI.deleteBtn')}
               </button>
             </div>
           </div>
@@ -786,10 +791,10 @@ export default function ShiftEditor() {
             onClick={handleExport}
             className="w-full text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-lg font-medium"
           >
-            📥 Dışa Aktar (JSON)
+            {t('shiftEditorUI.exportBtn')}
           </button>
           <label className="w-full text-xs text-center bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-lg font-medium cursor-pointer block">
-            📤 İçe Aktar (JSON)
+            {t('shiftEditorUI.importBtn')}
             <input type="file" accept=".json" onChange={handleImport} className="hidden" />
           </label>
         </div>
@@ -806,8 +811,8 @@ export default function ShiftEditor() {
             </h2>
             <p className="text-[11px] text-slate-500 mt-0.5">
               {selected
-                ? `${sortedActivities.length} aktivite · Düzenlemek için ✎ butonuna basın`
-                : 'Sol taraftan bir şablon seçin veya oluşturun'}
+                ? `${sortedActivities.length} ${t('shiftEditorUI.activityEditHint')}`
+                : t('shiftEditorUI.selectTemplate')}
             </p>
           </div>
           <button
@@ -815,7 +820,7 @@ export default function ShiftEditor() {
             onClick={handleAddActivity}
             className="accent-solid-strong hover:accent-solid disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md accent-glow-lg"
           >
-            + Aktivite Ekle
+            {t('shiftEditorUI.newActivity')}
           </button>
         </div>
 
@@ -824,17 +829,17 @@ export default function ShiftEditor() {
           {!selected ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-3">
               <span className="text-5xl">⚙️</span>
-              <p className="text-sm">Sol taraftan bir şablon seçin veya yeni oluşturun.</p>
+              <p className="text-sm">{t('shiftEditorUI.selectTemplate')}</p>
             </div>
           ) : sortedActivities.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-3">
               <span className="text-5xl">📋</span>
-              <p className="text-sm">Bu şablonda henüz aktivite yok.</p>
+              <p className="text-sm">{t('shiftEditorUI.noActivities')}</p>
               <button
                 onClick={handleAddActivity}
                 className="mt-2 accent-solid-strong hover:accent-solid text-white text-sm px-5 py-2.5 rounded-xl font-semibold transition-colors"
               >
-                + İlk Aktiviteyi Ekle
+                {t('shiftEditorUI.addFirst')}
               </button>
             </div>
           ) : (
@@ -847,7 +852,7 @@ export default function ShiftEditor() {
                   isLast={idx === sortedActivities.length - 1}
                   onEdit={() => handleEditActivity(act)}
                   onDelete={() => {
-                    if (confirm(`"${act.name}" aktivitesini silmek istiyor musunuz?`)) {
+                    if (confirm(t('shiftEditorUI.deleteActivityConfirm', { name: act.name }))) {
                       handleDeleteActivity(act.id)
                     }
                   }}
@@ -859,7 +864,7 @@ export default function ShiftEditor() {
 
               {/* Visual day summary bar */}
               <div className="mt-4 p-4 bg-slate-900/50 border border-white/5 rounded-xl">
-                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-2">Günlük Zaman Özeti</p>
+                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-2">{t('shiftEditorUI.dailyTimeSummary')}</p>
                 <div className="relative h-5 rounded overflow-hidden bg-slate-800">
                   {sortedActivities.map(act => {
                     let actStartSecs = toSecs(act.startTime)
@@ -881,8 +886,8 @@ export default function ShiftEditor() {
                 <div className="flex justify-between mt-1.5">
                   <span className="text-[10px] text-slate-600 font-mono">{firstAct.startTime}</span>
                   <span className="text-[10px] text-slate-400 font-mono">
-                    Toplam: {sortedActivities.reduce((s, a) => s + a.duration, 0)} dk
-                    {' '}({Math.round(sortedActivities.reduce((s, a) => s + a.duration, 0) / 60 * 10) / 10} sa)
+                    {t('shiftEditorUI.totalDuration')} {sortedActivities.reduce((s, a) => s + a.duration, 0)} {t('shiftEditorUI.minLabel')}
+                    {' '}({Math.round(sortedActivities.reduce((s, a) => s + a.duration, 0) / 60 * 10) / 10} {t('shiftEditorUI.hoursShort')})
                   </span>
                   <span className="text-[10px] text-slate-600 font-mono">{lastAct.endTime}</span>
                 </div>

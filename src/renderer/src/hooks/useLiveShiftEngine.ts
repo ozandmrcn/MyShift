@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useShiftStore, Activity, ShiftTemplate } from '../stores/useShiftStore'
 import { playSound } from '../utils/soundEffects'
+import tr from '../i18n/tr'
+import en from '../i18n/en'
 
 // Helper to convert HH:mm:ss to seconds of the day
 export function timeToSeconds(timeStr: string): number {
@@ -19,7 +21,7 @@ export function secondsToHHMM(totalSecs: number): string {
 }
 
 // Helper to format remaining time or overtime
-export function formatRemaining(totalSecs: number, isOvertime = false): string {
+export function formatRemaining(totalSecs: number, isOvertime = false, hLabel = 'sa', mLabel = 'dk'): string {
   if (typeof totalSecs !== 'number' || !Number.isFinite(totalSecs) || totalSecs <= 0) return '00:00'
   const h = Math.floor(totalSecs / 3600)
   const m = Math.floor((totalSecs % 3600) / 60)
@@ -28,7 +30,7 @@ export function formatRemaining(totalSecs: number, isOvertime = false): string {
   const prefix = isOvertime ? '+' : ''
   
   if (h > 0) {
-    return `${prefix}${h}sa ${m.toString().padStart(2, '0')}dk`
+    return `${prefix}${h}${hLabel} ${m.toString().padStart(2, '0')}${mLabel}`
   }
   return `${prefix}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
@@ -67,6 +69,10 @@ export function useLiveShiftEngine() {
   const confirmedActivities = useShiftStore((state) => state.confirmedActivities)
   const timeOffset = useShiftStore((state) => state.timeOffset)
   const setTimeOffset = useShiftStore((state) => state.setTimeOffset)
+
+  const locale = settings.language === 'tr' ? tr : en
+  const hLabel = settings.language === 'tr' ? 'sa' : 'h'
+  const mLabel = settings.language === 'tr' ? 'dk' : 'm'
   
   const [time, setTime] = useState<Date>(new Date())
   const [prevActivityId, setPrevActivityId] = useState<string | null>(null)
@@ -548,7 +554,9 @@ export function useLiveShiftEngine() {
       idleNow = false
     } else {
       const overBudgetBreak = settings.mode === 'pay' && !!runningBreak && runningBreak.overBudget
+      const inBudgetBreak = settings.mode === 'pay' && !!runningBreak && !runningBreak.overBudget
       idleNow = !!resolvedTemplate && resolvedTemplate.activities.length > 0
+        && !inBudgetBreak
         && ((!engineState.currentActivity && !engineState.isBeforeShift && !engineState.isShiftFinished) || overBudgetBreak)
     }
     updateIdle(idleNow)
@@ -588,7 +596,7 @@ export function useLiveShiftEngine() {
       const elapsedMin = (Date.now() - chronoStartedAt) / 60000
       if (elapsedMin >= settings.chronoWorkReminderMin && !chronoWorkReminderFired.current) {
         chronoWorkReminderFired.current = true
-        showReminder('work', `Sürekli ${settings.chronoWorkReminderMin} dk çalıştın — mola zamanı!`)
+        showReminder('work', locale.notifications.chronoWorkReminder.replace('{min}', String(settings.chronoWorkReminderMin)))
       }
     }
     if (!engineState.isChronoWork) chronoWorkReminderFired.current = false
@@ -597,7 +605,7 @@ export function useLiveShiftEngine() {
       const elapsedMin = (Date.now() - chronoStartedAt) / 60000
       if (elapsedMin >= settings.chronoBreakReminderMin && !chronoBreakReminderFired.current) {
         chronoBreakReminderFired.current = true
-        showReminder('break', `Mola ${settings.chronoBreakReminderMin} dk'yı aştı — işe dönmelisin!`)
+        showReminder('break', locale.notifications.chronoBreakReminder.replace('{min}', String(settings.chronoBreakReminderMin)))
       }
     }
     if (!engineState.isChronoBreak) chronoBreakReminderFired.current = false
@@ -699,26 +707,26 @@ export function useLiveShiftEngine() {
     const clock = timeString.substring(0, 5)
     let status: string
     if (settings.mode === 'chrono') {
-      if (engineState.isChronoWork) status = `⏱ Çalışma: ${formatRemaining(engineState.chronoWorkSecs)}`
-      else if (engineState.isChronoBreak) status = `☕ Mola: ${formatRemaining(engineState.chronoBreakSecs)}`
-      else status = '⏸ Duraklatıldı'
+      if (engineState.isChronoWork) status = `${locale.tray.chronoWork}: ${formatRemaining(engineState.chronoWorkSecs, false, hLabel, mLabel)}`
+      else if (engineState.isChronoBreak) status = `${locale.tray.chronoBreak}: ${formatRemaining(engineState.chronoBreakSecs, false, hLabel, mLabel)}`
+      else status = locale.tray.chronoPaused
     } else if (currentActivity) {
       status = `${currentActivity.icon} ${currentActivity.name}`
     } else if (isBeforeShift) {
-      status = 'Vardiya başlamadı'
+      status = locale.tray.shiftNotStarted
     } else if (isShiftFinished) {
-      status = 'Vardiya tamamlandı'
+      status = locale.tray.shiftDone
     } else if (isOvertime) {
-      status = `Aşım: ${formatRemaining(idleSeconds)}`
+      status = `${locale.tray.overtimeLabel}: ${formatRemaining(idleSeconds, false, hLabel, mLabel)}`
     } else if (paybackRunning) {
-      status = `Payback • Kalan aşım ${formatRemaining(idleSeconds)}`
+      status = `Payback • ${locale.tray.paybackRemaining} ${formatRemaining(idleSeconds, false, hLabel, mLabel)}`
     } else if (idleSeconds > 0) {
       const h = Math.floor(idleSeconds / 3600)
       const m = Math.floor((idleSeconds % 3600) / 60)
       const s = idleSeconds % 60
-      status = `Aşım: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+      status = `${locale.tray.overtimeLabel}: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
     } else {
-      status = 'Aşım / Boşta'
+      status = locale.tray.overtimeIdle
     }
     window.electronAPI.tray.updateInfo(`${resolvedTemplate?.name || 'MyShift'} • ${clock} • ${status}`)
   }, [engineState, idleSeconds, timeString, resolvedTemplate])
@@ -761,7 +769,7 @@ export function useLiveShiftEngine() {
     // 1. Shift Started Notification
     let shiftStartedJustNow = false
     if (currentSecs >= shiftStartSecs && isBeforeShift === false && !hasNotifiedShiftStart && !isShiftFinished && !isOvertime) {
-      window.electronAPI?.notification?.show('🌅 Vardiya Başladı', 'Bugünün planı başladı. İyi çalışmalar!')
+      window.electronAPI?.notification?.show(`🌅 ${locale.notifications.shiftStarted}`, locale.notifications.shiftStartedBody)
       playSound(settings.defaultNotificationSound)
       setHasNotifiedShiftStart(true)
       shiftStartedJustNow = true
@@ -774,19 +782,19 @@ export function useLiveShiftEngine() {
         if (currentActivity.notificationEnabled) {
           const mins = currentActivity.duration
           const durLabel = mins >= 60
-            ? `${Math.floor(mins / 60)} sa ${mins % 60 > 0 ? `${mins % 60} dk` : ''}`.trim()
-            : `${mins} dk`
+            ? `${Math.floor(mins / 60)}${hLabel} ${mins % 60 > 0 ? `${mins % 60}${mLabel}` : ''}`.trim()
+            : `${mins}${mLabel}`
           window.electronAPI?.notification?.show(
             `${currentActivity.icon} ${currentActivity.name}`,
-            `Başlama vakti geldi — ${durLabel}. İyi geçsin!`
+            locale.notifications.activityTimeBody.replace('{durLabel}', `${locale.notifications.activityTime} — ${durLabel}`)
           )
           playSound(currentActivity.notificationSound)
         }
       } else if (prevActivityId && !isShiftFinished && !isBeforeShift && !isOvertime) {
-        const nextLabel = nextActivity ? `${nextActivity.icon} ${nextActivity.name}` : 'sıradaki aktivite'
+        const nextLabel = nextActivity ? `${nextActivity.icon} ${nextActivity.name}` : locale.notifications.nextActivity
         window.electronAPI?.notification?.show(
-          '🧘 Mola Vakti',
-          `Aktivite bitti. Sıradaki: ${nextLabel}. Bu ara geçen süre aşım olarak sayılır.`
+          `🧘 ${locale.notifications.breakTime}`,
+          locale.notifications.breakTimeBody.replace('{next}', nextLabel)
         )
         playSound('default')
       }
@@ -797,15 +805,15 @@ export function useLiveShiftEngine() {
     if ((isShiftFinished || isOvertime) && !hasNotifiedShiftEnd) {
       if (isOvertime) {
         window.electronAPI?.notification?.show(
-          '⏰ Aşım Başladı',
+          `⏰ ${locale.notifications.overtimeStarted}`,
           durationMode
-            ? 'Hedef süre doldu — vardiyayı tamamlayana kadar geçen her saniye aşım olarak sayılıyor.'
-            : 'Vardiya saati doldu — geçen her saniye aşım olarak sayılıyor.'
+            ? locale.notifications.overtimeBodyDuration
+            : locale.notifications.overtimeBodyShift
         )
       } else {
         window.electronAPI?.notification?.show(
-          '🎉 Vardiya Tamamlandı',
-          'Bugünün tüm aktivitelerini bitirdin. Dinlenme zamanı!'
+          `🎉 ${locale.notifications.shiftCompleted}`,
+          locale.notifications.shiftCompletedBody
         )
       }
       playSound('bell')

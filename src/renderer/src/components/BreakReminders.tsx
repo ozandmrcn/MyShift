@@ -16,6 +16,7 @@ export function useBreakReminders() {
   const lastBreakEndedAt = useShiftStore((s) => s.lastBreakEndedAt)
   const showReminder = useShiftStore((s) => s.showReminder)
   const firedRef = useRef<{ work: string; brk: string }>({ work: '', brk: '' })
+  const { t } = useT()
 
   useEffect(() => {
     if (settings.mode !== 'pay') {
@@ -42,7 +43,7 @@ export function useBreakReminders() {
           const key = `${todayStr}|${stretchStartMs}`
           if (firedRef.current.work !== key) {
             firedRef.current.work = key
-            showReminder('work', `${settings.payWorkReminderMin} dakikadır mola yapmadın — kısa bir mola önerilir.`)
+            showReminder('work', t('breakRemindersUI.workReminder', { min: settings.payWorkReminderMin }))
           }
         }
       }
@@ -59,7 +60,7 @@ export function useBreakReminders() {
           const key = `${runningBreak.startedAt}`
           if (firedRef.current.brk !== key) {
             firedRef.current.brk = key
-            showReminder('break', `Dikkatli ol, ${settings.payBreakReminderMin} dakikalık planladığın molanı bitirdin — başka molandan yiyorsun.`)
+            showReminder('break', t('breakRemindersUI.breakOverrun', { min: settings.payBreakReminderMin }))
           }
         }
       }
@@ -98,8 +99,8 @@ export function ReminderBanner() {
 
   const isWork = reminder.kind === 'work'
   const accent = isWork
-    ? { tile: 'bg-emerald-500/15 border-emerald-400/30', glow: 'bg-emerald-400/25', bar: 'rgba(52,211,153,0.65)', title: 'Mola Önerisi', ring: 'text-emerald-300' }
-    : { tile: 'bg-amber-500/15 border-amber-400/30', glow: 'bg-amber-400/25', bar: 'rgba(251,191,36,0.65)', title: 'Mola Aşımı', ring: 'text-amber-300' }
+    ? { tile: 'bg-emerald-500/15 border-emerald-400/30', glow: 'bg-emerald-400/25', bar: 'rgba(52,211,153,0.65)', title: t('breakRemindersUI.suggestionTitle'), ring: 'text-emerald-300' }
+    : { tile: 'bg-amber-500/15 border-amber-400/30', glow: 'bg-amber-400/25', bar: 'rgba(251,191,36,0.65)', title: t('breakRemindersUI.overrunTitle'), ring: 'text-amber-300' }
 
   return (
     <div
@@ -128,7 +129,7 @@ export function ReminderBanner() {
               closeTimerRef.current = window.setTimeout(() => dismissReminder(), 300)
             }}
             className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-sm flex items-center justify-center flex-shrink-0 -mr-1 -mt-1 transition-colors"
-            title="Kapat"
+            title={t('breakRemindersUI.close')}
           >
             ✕
           </button>

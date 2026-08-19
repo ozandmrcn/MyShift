@@ -4,17 +4,6 @@ import type { BreakSubtype } from '../stores/useShiftStore'
 import { useLiveShiftEngine, computeWorkedSeconds, timeToSeconds, formatRemaining } from '../hooks/useLiveShiftEngine'
 import { useT } from '../i18n/useT'
 
-const SUBTYPE_LABELS: Record<BreakSubtype, { label: string; icon: string }> = {
-  cay: { label: 'Çay', icon: '🍵' },
-  kahve: { label: 'Kahve', icon: '☕' },
-  ihtiyac: { label: 'İhtiyaç Molası', icon: '🚻' },
-  kahvalti: { label: 'Kahvaltı', icon: '🍳' },
-  ogle: { label: 'Öğle Yemeği', icon: '🍲' },
-  aksam: { label: 'Akşam Yemeği', icon: '🍛' }
-}
-
-const TYPE_LABELS: Record<string, string> = { short: 'Kısa Mola', meal: 'Yemek Molası' }
-
 function pad(n: number): string {
   return n.toString().padStart(2, '0')
 }
@@ -51,6 +40,18 @@ function SectionCard({ title, icon, children }: { title: string; icon: string; c
 
 export default function TodaySummary() {
   const { t } = useT()
+
+  const SUBTYPE_LABELS: Record<BreakSubtype, { label: string; icon: string }> = {
+    cay: { label: t('todaySummaryUI.subtypeCay'), icon: '🍵' },
+    kahve: { label: t('todaySummaryUI.subtypeKahve'), icon: '☕' },
+    ihtiyac: { label: t('todaySummaryUI.subtypeIhtiyac'), icon: '🚻' },
+    kahvalti: { label: t('todaySummaryUI.subtypeKahvalti'), icon: '🍳' },
+    ogle: { label: t('todaySummaryUI.subtypeOgle'), icon: '🍲' },
+    aksam: { label: t('todaySummaryUI.subtypeAksam'), icon: '🍛' }
+  }
+
+  const TYPE_LABELS: Record<string, string> = { short: t('todaySummaryUI.typeShort'), meal: t('todaySummaryUI.typeMeal') }
+
   const engine = useLiveShiftEngine()
   const settings = useShiftStore((s) => s.settings)
   const runningBreak = useShiftStore((s) => s.runningBreak)
@@ -209,16 +210,16 @@ export default function TodaySummary() {
         <div>
           <h1 className="text-xl font-bold text-slate-100">{t('todaySummary.title')}</h1>
           <p className="text-xs text-slate-500 mt-1 font-mono">
-            {engine.currentDateStr} · Saat {engine.currentTime}
-            {settings.mode === 'pay' ? ' · PAY MODU' : settings.mode === 'chrono' ? ' · KRONO MODU' : activeTemplate ? ` · ${activeTemplate.name}` : ' · Vardiya yok'}
+            {engine.currentDateStr} · {t('todaySummaryUI.hourLabel')} {engine.currentTime}
+            {settings.mode === 'pay' ? ` · ${t('dashboardUI.modePay')}` : settings.mode === 'chrono' ? ` · ${t('dashboardUI.modeChrono')}` : activeTemplate ? ` · ${activeTemplate.name}` : ` · ${t('dashboardUI.shiftNone')}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {engine.isShiftFinished && (
-            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">✓ Bugün tamamlandı</span>
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">✓ {t('todaySummaryUI.shiftCompleted')}</span>
           )}
           {engine.isOvertime && (
-            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300">⏰ Aşımda</span>
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300">⏰ {t('todaySummaryUI.overtimeNow')}</span>
           )}
           <button
             onClick={() => {
@@ -236,9 +237,9 @@ export default function TodaySummary() {
                 ? 'bg-rose-600 border-rose-500 text-white hover:bg-rose-500'
                 : 'bg-slate-800/80 border-white/10 text-slate-400 hover:text-slate-200 hover:bg-slate-700/80'
             }`}
-            title="Bugünün tüm sayaçlarını, mola bütçesini ve kayıtları sıfırlar"
+            title={t('todaySummaryUI.resetTitle')}
           >
-            {confirmReset ? 'Emin misin?' : '↺ Bugünü Sıfırla'}
+            {confirmReset ? t('todaySummaryUI.resetConfirm') : t('todaySummaryUI.resetBtn')}
           </button>
         </div>
       </div>
@@ -254,8 +255,8 @@ export default function TodaySummary() {
             sub={
               engine.breakCount > 0
                 ? settings.mode === 'pay'
-                  ? `${engine.breakCount} mola · kısa ${usedOf('short')}/${settings.payShortBreakMin} dk, yemek ${usedOf('meal')}/${settings.payMealBreakMin} dk`
-                  : `${engine.breakCount} mola`
+                  ? `${engine.breakCount} ${t('todaySummaryUI.breakCountLabel')} · ${t('todaySummaryUI.shortUsed')} ${usedOf('short')}/${settings.payShortBreakMin} ${t('todaySummaryUI.durationsShort')}, ${t('todaySummaryUI.mealUsed')} ${usedOf('meal')}/${settings.payMealBreakMin} ${t('todaySummaryUI.durationsShort')}`
+                  : `${engine.breakCount} ${t('todaySummaryUI.breakCountLabel')}`
                 : undefined
             }
             accent="text-orange-300"
@@ -264,66 +265,66 @@ export default function TodaySummary() {
         {settings.mode !== 'chrono' && engine.idleLogSeconds > 0 && (
           <StatCard
             icon="😴"
-            label="Aşım (net)"
+            label={t('todaySummaryUI.overtimeNet')}
             value={formatRemaining(engine.idleSeconds)}
-            sub={engine.idleLogSeconds !== engine.idleSeconds ? `Toplam aşım: ${formatRemaining(engine.idleLogSeconds)}` : undefined}
+            sub={engine.idleLogSeconds !== engine.idleSeconds ? t('todaySummaryUI.totalOvertime', { time: formatRemaining(engine.idleLogSeconds) }) : undefined}
             accent="text-rose-300"
           />
         )}
         {settings.mode !== 'chrono' && engine.paybackSeconds > 0 && (
           <StatCard
             icon="⚡"
-            label="Payback"
+            label={t('todaySummaryUI.paybackLabel')}
             value={formatRemaining(engine.paybackSeconds)}
-            sub={paybackRunning ? 'Payback çalışıyor…' : undefined}
+            sub={paybackRunning ? t('todaySummaryUI.paybackRunningLabel') : undefined}
             accent="text-emerald-300"
           />
         )}
         {settings.mode !== 'chrono' && (
-          <StatCard icon="🎯" label="Vardiya" value={`%${Math.round(engine.shiftProgress)}`} sub={engine.currentActivity ? `${engine.currentActivity.icon} ${engine.currentActivity.name}` : undefined} />
+          <StatCard icon="🎯" label={t('todaySummaryUI.shiftLabel')} value={`%${Math.round(engine.shiftProgress)}`} sub={engine.currentActivity ? `${engine.currentActivity.icon} ${engine.currentActivity.name}` : undefined} />
         )}
         {settings.mode === 'chrono' && (
           <StatCard
             icon="⏱️"
-            label="Krono"
-            value={engine.isChronoWork ? 'Aktif' : engine.isChronoBreak ? 'Mola' : 'Duraklatıldı'}
+            label={t('todaySummaryUI.chronoLabel')}
+            value={engine.isChronoWork ? t('dashboardUI.chronoActive') : engine.isChronoBreak ? t('dashboardUI.chronoBreak') : t('dashboardUI.chronoPaused')}
             sub={`${t('todaySummary.work')}: ${formatRemaining(engine.chronoWorkSecs)} · ${t('todaySummary.break')}: ${formatRemaining(engine.chronoBreakSecs)}`}
           />
         )}
         {breakLog.length > 0 && (
           <StatCard
             icon="🔁"
-            label="Mola Günlüğü"
-            value={`${breakLog.length} kayıt`}
-            sub={runningBreak ? `${SUBTYPE_LABELS[runningBreak.subtype].label} devam ediyor` : undefined}
+            label={t('todaySummaryUI.breakLogLabel')}
+            value={`${breakLog.length} ${t('todaySummaryUI.recordCount')}`}
+            sub={runningBreak ? `${SUBTYPE_LABELS[runningBreak.subtype].label} ${t('todaySummaryUI.continuing')}` : undefined}
           />
         )}
       </div>
 
       {/* Hour-by-hour log */}
       <SectionCard icon="🕐" title={
-        durationMode ? 'Ödenecek Süre' :
-        settings.mode === 'chrono' ? 'Saat Saat Bugün' :
-        !shift ? 'Bugün' : 'Saat Saat Bugün'
+        durationMode ? t('todaySummaryUI.durationToPay') :
+        settings.mode === 'chrono' ? t('todaySummaryUI.hourlyToday') :
+        !shift ? t('todaySummaryUI.today') : t('todaySummaryUI.hourlyToday')
       }>
         {durationMode ? (
           <div>
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="text-xs text-slate-400">
-                  Çalıştıkça kalan azalır — molalar sayılmaz.
+                  {t('todaySummaryUI.decreaseNote')}
                 </p>
                 <p className="text-3xl font-bold font-mono text-slate-100 mt-2">
                   {formatRemaining(durationRemaining)}
-                  <span className="text-sm text-slate-500 ml-2 font-sans font-medium">kaldı</span>
+                  <span className="text-sm text-slate-500 ml-2 font-sans font-medium">{t('todaySummaryUI.remainedLabel')}</span>
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Çalışılan</p>
+                <p className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">{t('todaySummaryUI.workedLabel')}</p>
                 <p className="text-lg font-bold font-mono accent-text-soft">{formatRemaining(engine.workedSeconds)}</p>
               </div>
               <div className="text-right">
-                <p className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Hedef</p>
+                <p className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">{t('todaySummaryUI.targetLabel')}</p>
                 <p className="text-lg font-bold font-mono text-slate-200">{formatRemaining(durationTargetSecs)}</p>
               </div>
             </div>
@@ -333,25 +334,25 @@ export default function TodaySummary() {
                 style={{ width: `${durationPct}%` }}
               />
             </div>
-            <p className="text-[10px] text-slate-500 mt-2">
-              Hedefe {durationPct >= 100 ? 'ulaştın 🎉' : `${Math.round(durationPct)}% tamamlandı`}
+              <p className="text-[10px] text-slate-500 mt-2">
+                {t('todaySummaryUI.targetLabel')} {durationPct >= 100 ? t('todaySummaryUI.targetReached') : `${Math.round(durationPct)}${t('todaySummaryUI.targetPercent')}`}
             </p>
           </div>
         ) : !shift && settings.mode !== 'chrono' ? (
-          <p className="text-xs text-slate-500">Bugün için aktif bir vardiya tanımlı değil.</p>
+          <p className="text-xs text-slate-500">{t('todaySummaryUI.noActiveShift')}</p>
         ) : hours.length === 0 ? (
-          <p className="text-xs text-slate-500">Vardiya henüz başlamadı.</p>
+          <p className="text-xs text-slate-500">{t('todaySummaryUI.shiftNotStarted')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="text-[10px] uppercase tracking-widest text-slate-500">
-                  <th className="pb-2 pr-3 font-semibold">Saat</th>
+                  <th className="pb-2 pr-3 font-semibold">{t('todaySummaryUI.hourLabel')}</th>
                   <th className="pb-2 pr-3 font-semibold">{t('todaySummary.work')}</th>
                   <th className="pb-2 pr-3 font-semibold">{t('todaySummary.break')}</th>
                   <th className="pb-2 pr-3 font-semibold">{t('todaySummary.overtime')}</th>
-                  <th className="pb-2 pr-3 font-semibold">Payback</th>
-                  <th className="pb-2 font-semibold w-1/3">Yoğunluk</th>
+                  <th className="pb-2 pr-3 font-semibold">{t('todaySummaryUI.paybackLabel')}</th>
+                  <th className="pb-2 font-semibold w-1/3">{t('todaySummaryUI.intensityLabel')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -362,7 +363,7 @@ export default function TodaySummary() {
                   >
                     <td className="py-2 pr-3 text-sm font-mono font-semibold text-slate-300">
                       {r.key}
-                      {r.current && <span className="ml-1.5 text-[9px] accent-text-soft font-sans uppercase tracking-wide">şimdi</span>}
+                      {r.current && <span className="ml-1.5 text-[9px] accent-text-soft font-sans uppercase tracking-wide">{t('todaySummaryUI.nowLabel')}</span>}
                     </td>
                     <td className="py-2 pr-3 text-sm font-mono text-slate-200">{r.worked > 0 ? formatRemaining(r.worked) : '—'}</td>
                     <td className="py-2 pr-3 text-sm font-mono text-orange-300">{r.breakSec > 0 ? formatRemaining(r.breakSec) : '—'}</td>
@@ -380,7 +381,7 @@ export default function TodaySummary() {
                 ))}
                 {/* Totals row */}
                 <tr className="border-t border-white/10">
-                  <td className="py-2 pr-3 text-xs font-bold text-slate-400 uppercase tracking-wide">Toplam</td>
+                  <td className="py-2 pr-3 text-xs font-bold text-slate-400 uppercase tracking-wide">{t('todaySummaryUI.totalLabel')}</td>
                   <td className="py-2 pr-3 text-sm font-mono font-bold text-slate-100">{formatRemaining(engine.workedSeconds)}</td>
                   <td className="py-2 pr-3 text-sm font-mono font-bold text-orange-300">{formatRemaining(engine.breakSeconds)}</td>
                   <td className="py-2 pr-3 text-sm font-mono font-bold text-rose-300">{formatRemaining(engine.idleLogSeconds)}</td>
@@ -394,23 +395,23 @@ export default function TodaySummary() {
       </SectionCard>
 
       {/* Break log */}
-      <SectionCard icon="🧘" title="Mola Günlüğü">
+      <SectionCard icon="🧘" title={t('todaySummaryUI.breakLogTitle')}>
         {settings.mode === 'chrono' ? (
           engine.chronoBreakSecs > 0 ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between py-2">
-                <span className="text-sm text-slate-300">Toplam mola süresi</span>
+                <span className="text-sm text-slate-300">{t('todaySummaryUI.totalBreakTime')}</span>
                 <span className="text-sm font-mono font-semibold text-orange-300">{formatRemaining(engine.chronoBreakSecs)}</span>
               </div>
               {runningBreak && (
                 <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between gap-3">
-                  <span className="text-sm font-semibold text-emerald-300">Mola devam ediyor</span>
+                  <span className="text-sm font-semibold text-emerald-300">{t('todaySummaryUI.breakOngoing')}</span>
                   <span className="text-sm font-mono font-semibold text-emerald-300">{formatRemaining(engine.chronoBreakSecs)}</span>
                 </div>
               )}
             </div>
           ) : (
-            <p className="text-xs text-slate-500">Bugün henüz mola kaydı yok.</p>
+            <p className="text-xs text-slate-500">{t('todaySummaryUI.noBreakRecords')}</p>
           )
         ) : settings.mode === 'pay' ? (
           <>
@@ -421,19 +422,19 @@ export default function TodaySummary() {
                   <div>
                     <p className={`text-sm font-semibold ${liveRunningBreak.overBudget ? 'text-rose-300' : 'text-emerald-300'}`}>
                       {SUBTYPE_LABELS[liveRunningBreak.subtype].label}
-                      <span className="ml-2 text-[9px] uppercase tracking-wide text-slate-500">Devam ediyor</span>
+                      <span className="ml-2 text-[9px] uppercase tracking-wide text-slate-500">{t('todaySummaryUI.ongoingLabel')}</span>
                     </p>
                     <p className="text-[10px] text-slate-500 mt-0.5 font-mono">
                       {msToHHMM(liveRunningBreak.startedAt)} – … · {formatRemaining(liveRunningBreak.durationSec)}
                     </p>
                   </div>
                 </div>
-                {liveRunningBreak.overBudget && <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30">AŞIM</span>}
+                {liveRunningBreak.overBudget && <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30">{t('dashboardUI.overtimeBadge')}</span>}
               </div>
             )}
 
             {payBreaks.length === 0 && !runningBreak ? (
-              <p className="text-xs text-slate-500">Bugün henüz mola kaydı yok. Dashboard'dan bir mola başlatın.</p>
+              <p className="text-xs text-slate-500">{t('todaySummaryUI.noBreakRecordsDash')}</p>
             ) : (
               <div className="flex flex-col divide-y divide-white/5">
                 {payBreaks.map((b) => (
@@ -453,7 +454,7 @@ export default function TodaySummary() {
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="text-sm font-mono font-semibold text-slate-200">{formatRemaining(b.durationSec)}</span>
                       {b.overBudget && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">AŞIM</span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">{t('dashboardUI.overtimeBadge')}</span>
                       )}
                     </div>
                   </div>
@@ -463,7 +464,7 @@ export default function TodaySummary() {
           </>
         ) : (
           plannedBreaks.length === 0 ? (
-            <p className="text-xs text-slate-500">Bu modda molalar vardiya planındaki "Mola mı?" aktivitelerinden gelir. Henüz planlanmış mola yok.</p>
+            <p className="text-xs text-slate-500">{t('todaySummaryUI.noPlannedBreaks')}</p>
           ) : (
             <div className="flex flex-col divide-y divide-white/5">
               {plannedBreaks.map((a) => (
@@ -486,9 +487,9 @@ export default function TodaySummary() {
       {settings.mode !== 'chrono' && (idleList.length > 0 || paybackRunning || paybackList.length > 0) && (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {(idleList.length > 0 || paybackRunning) && (
-        <SectionCard icon="😴" title="Aşım Kaydı">
+        <SectionCard icon="😴" title={t('todaySummaryUI.overtimeLogTitle')}>
           {idleList.length === 0 ? (
-            <p className="text-xs text-slate-500">Aşım yok.</p>
+            <p className="text-xs text-slate-500">{t('todaySummaryUI.noOvertime')}</p>
           ) : (
             <div className="flex flex-col divide-y divide-white/5">
               {idleList.map((s, i) => (
@@ -505,10 +506,10 @@ export default function TodaySummary() {
         )}
 
         {(paybackRunning || paybackList.length > 0) && (
-        <SectionCard icon="⚡" title="Payback Kaydı">
+        <SectionCard icon="⚡" title={t('todaySummaryUI.paybackLogTitle')}>
           {paybackRunning && (
             <div className="mb-3 p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-emerald-300">Payback çalışıyor</p>
+              <p className="text-sm font-semibold text-emerald-300">{t('todaySummaryUI.paybackRunning')}</p>
               <span className="text-sm font-mono font-semibold text-emerald-300">{formatRemaining(engine.paybackSeconds)}</span>
             </div>
           )}
@@ -525,7 +526,7 @@ export default function TodaySummary() {
             </div>
           )}
           <p className="text-[10px] text-slate-600 mt-3 leading-relaxed">
-            Net aşım: {formatRemaining(engine.idleSeconds)} — payback her saniyesinde aşımı azaltır.
+            {t('todaySummaryUI.netOvertime', { time: formatRemaining(engine.idleSeconds) })}
           </p>
         </SectionCard>
         )}
