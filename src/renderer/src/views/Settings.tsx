@@ -5,6 +5,8 @@ import { playSound, playReminderSound } from '../utils/soundEffects'
 import { useT } from '../i18n/useT'
 
 const THEMES_SWATCHES: Record<string, string> = {
+  light: 'conic-gradient(#ffffff 0 25%, #e2e8f0 0 50%, #94a3b8 0 75%, #475569 0 100%)',
+  dark: 'conic-gradient(#0a0a0b 0 25%, #1c1c20 0 50%, #3a3a42 0 75%, #71717a 0 100%)',
   mavi: 'conic-gradient(#0f172a 0 25%, #1e40af 0 50%, #3b82f6 0 75%, #93c5fd 0 100%)',
   zurut: 'conic-gradient(#0a1f16 0 25%, #065f46 0 50%, #10b981 0 75%, #6ee7b7 0 100%)',
   turkuaz: 'conic-gradient(#072624 0 25%, #0f766e 0 50%, #14b8a6 0 75%, #5eead4 0 100%)',
@@ -12,8 +14,10 @@ const THEMES_SWATCHES: Record<string, string> = {
   kiraz: 'conic-gradient(#240d12 0 25%, #be123c 0 50%, #f43f5e 0 75%, #fda4af 0 100%)',
   kehribar: 'conic-gradient(#241d09 0 25%, #b45309 0 50%, #f59e0b 0 75%, #fcd34d 0 100%)',
 }
-const THEME_KEYS = ['mavi', 'zurut', 'turkuaz', 'menekse', 'kiraz', 'kehribar'] as const
+const THEME_KEYS = ['light', 'dark', 'mavi', 'zurut', 'turkuaz', 'menekse', 'kiraz', 'kehribar'] as const
 const THEME_LABEL_KEY: Record<string, string> = {
+  light: 'settingsView.themeLight',
+  dark: 'settingsView.themeDark',
   mavi: 'settingsView.themeMidnightBlue',
   zurut: 'settingsView.themeEmerald',
   turkuaz: 'settingsView.themeTurquoise',

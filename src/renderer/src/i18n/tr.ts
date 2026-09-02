@@ -224,6 +224,8 @@ const tr = {
     pageTitle: 'Uygulama Ayarları',
     pageSubtitle: 'Açılış, tepsi ve bildirim tercihlerinizi yönetin.',
     appearanceHint: 'Genel temayı seçin — uygulamanın tamamı (arka plan, kartlar, yazılar) bu renge bürünür.',
+    themeLight: 'Açık (Beyaz)',
+    themeDark: 'Koyu (Sistem)',
     themeMidnightBlue: 'Gece Mavisi',
     themeEmerald: 'Zümrüt',
     themeTurquoise: 'Turkuaz',

@@ -209,6 +209,8 @@ const en: TranslationKeys = {
     pageTitle: 'App Settings',
     pageSubtitle: 'Manage startup, tray and notification preferences.',
     appearanceHint: 'Select the general theme — the entire app (background, cards, text) adopts this color.',
+    themeLight: 'Light (White)',
+    themeDark: 'Dark (System)',
     themeMidnightBlue: 'Midnight Blue',
     themeEmerald: 'Emerald',
     themeTurquoise: 'Turquoise',
