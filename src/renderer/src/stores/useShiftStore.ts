@@ -256,7 +256,7 @@ const defaultSettings: Settings = {
   autoMinimizeToTray: false,
   defaultNotificationSound: 'default',
   birthday: '',
-  theme: 'mavi',
+  theme: 'dark',
   commentProvider: 'offline',
   commentBaseUrl: 'http://127.0.0.1:11434',
   commentApiKey: '',

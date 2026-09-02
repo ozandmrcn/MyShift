@@ -25,7 +25,7 @@ export default function App() {
   // Apply the selected theme (accent palette) to the root element.
   const theme = useShiftStore((s) => s.settings.theme)
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme || 'mavi')
+    document.documentElement.setAttribute('data-theme', theme || 'dark')
   }, [theme])
 
   // Pay-mode break reminders run globally (any view, even minimized-to-tray).

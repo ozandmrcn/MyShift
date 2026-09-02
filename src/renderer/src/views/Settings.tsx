@@ -14,7 +14,7 @@ const THEMES_SWATCHES: Record<string, string> = {
   kiraz: 'conic-gradient(#240d12 0 25%, #be123c 0 50%, #f43f5e 0 75%, #fda4af 0 100%)',
   kehribar: 'conic-gradient(#241d09 0 25%, #b45309 0 50%, #f59e0b 0 75%, #fcd34d 0 100%)',
 }
-const THEME_KEYS = ['light', 'dark', 'mavi', 'zurut', 'turkuaz', 'menekse', 'kiraz', 'kehribar'] as const
+const THEME_KEYS = ['dark', 'light', 'mavi', 'zurut', 'turkuaz', 'menekse', 'kiraz', 'kehribar'] as const
 const THEME_LABEL_KEY: Record<string, string> = {
   light: 'settingsView.themeLight',
   dark: 'settingsView.themeDark',

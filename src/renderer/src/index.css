@@ -286,38 +286,39 @@
 }
 
 /* ── Light (white / light mode) ───────────────────────────────────────────────
-   Inverts the whole slate scale so every text/card class flips to a light
-   background with dark text — a conventional light mode. Because the app's card
-   surfaces use color-mix with --color-white, we darken them via the slate mix. */
+   A soft light mode — warm, low-glare neutrals instead of harsh pure white so it
+   doesn't dazzle. Inverts the slate scale so text is dark and surfaces stay light.
+   --color-white stays near-white so glassmorphism (color-mix with white) keeps a
+   light frosted surface, while the slate scale (used for text) flips to dark. */
 [data-theme='light'] {
-  --color-slate-950: #ffffff;
-  --color-slate-900: #f8fafc;
-  --color-slate-800: #eef2f7;
-  --color-slate-700: #cbd5e1;
-  --color-slate-600: #94a3b8;
-  --color-slate-500: #64748b;
-  --color-slate-400: #475569;
-  --color-slate-300: #334155;
-  --color-slate-200: #1e293b;
-  --color-slate-100: #0f172a;
-  --color-white: #0f172a;
-  --app-bg: radial-gradient(120% 90% at 15% -10%, rgba(148, 163, 184, 0.12), transparent 55%);
+  --color-slate-950: #f4f6f8;
+  --color-slate-900: #eef1f5;
+  --color-slate-800: #e4e9ef;
+  --color-slate-700: #d3dbe4;
+  --color-slate-600: #b9c4cf;
+  --color-slate-500: #8794a3;
+  --color-slate-400: #64748b;
+  --color-slate-300: #475569;
+  --color-slate-200: #2e3a4d;
+  --color-slate-100: #1c2534;
+  --color-white: #1c2534;
+  --app-bg: radial-gradient(120% 90% at 15% -10%, rgba(148, 163, 184, 0.16), transparent 55%);
   --accent-300: #475569;
-  --accent-400: #334155;
-  --accent-500: #475569;
-  --accent-600: #334155;
-  --accent-soft: rgba(100, 116, 139, 0.1);
-  --accent-soft-hover: rgba(100, 116, 139, 0.18);
-  --accent-border-soft: rgba(100, 116, 139, 0.3);
-  --accent-glow: rgba(100, 116, 139, 0.18);
-  --accent-heat-1: rgba(148, 163, 184, 0.6);
-  --accent-heat-2: rgba(148, 163, 184, 0.7);
-  --accent-heat-3: rgba(100, 116, 139, 0.7);
-  --accent-heat-4: rgba(51, 65, 85, 0.8);
-  --card-bg: color-mix(in srgb, var(--color-slate-950) 85%, #cbd5e1);
-  --card-bg-hover: color-mix(in srgb, var(--color-slate-950) 78%, #94a3b8);
-  --card-border: color-mix(in srgb, var(--color-slate-400) 20%, transparent);
-  --card-border-hover: color-mix(in srgb, var(--color-slate-400) 35%, transparent);
+  --accent-400: #3f4f63;
+  --accent-500: #334155;
+  --accent-600: #243244;
+  --accent-soft: rgba(51, 65, 85, 0.08);
+  --accent-soft-hover: rgba(51, 65, 85, 0.16);
+  --accent-border-soft: rgba(51, 65, 85, 0.22);
+  --accent-glow: rgba(51, 65, 85, 0.14);
+  --accent-heat-1: rgba(148, 163, 184, 0.5);
+  --accent-heat-2: rgba(148, 163, 184, 0.55);
+  --accent-heat-3: rgba(100, 116, 139, 0.6);
+  --accent-heat-4: rgba(51, 65, 85, 0.7);
+  --card-bg: color-mix(in srgb, #ffffff 60%, var(--color-slate-950));
+  --card-bg-hover: color-mix(in srgb, #ffffff 50%, var(--color-slate-950));
+  --card-border: color-mix(in srgb, var(--color-slate-400) 16%, transparent);
+  --card-border-hover: color-mix(in srgb, var(--color-slate-400) 30%, transparent);
 }
 
 /* App backdrop — the root container paints the full themed background */
@@ -325,6 +326,24 @@
   background-color: var(--color-slate-950);
   background-image: var(--app-bg);
 }
+
+/* Light mode: --color-white is dark (so headings/text turn dark on light surfaces),
+   but solid-coloured buttons keep a dark fill — force their label back to white so
+   the button text stays readable on the (dark) accent fill. */
+[data-theme='light'] .bg-emerald-600,
+[data-theme='light'] .bg-amber-600,
+[data-theme='light'] .bg-rose-500,
+[data-theme='light'] .bg-rose-600,
+[data-theme='light'] .bg-indigo-600,
+[data-theme='light'] .bg-sky-600,
+[data-theme='light'] .bg-orange-600,
+[data-theme='light'] .bg-red-600,
+[data-theme='light'] .bg-teal-600,
+[data-theme='light'] .accent-solid,
+[data-theme='light'] .accent-solid-strong {
+  color: #ffffff;
+}
+
 
 /* Accent utilities — replace hardcoded blue-* with these so themes work everywhere */
 @layer utilities {
