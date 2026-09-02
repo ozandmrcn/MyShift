@@ -388,8 +388,8 @@ export default function Dashboard() {
     { key: 'end', label: t('dashboardUI.statShiftEnd'), value: settings.payShiftEnd, icon: '🌇', accent: false },
     { key: 'planned', label: settings.payTargetMode === 'duration' ? t('dashboardUI.statTargetDuration') : t('dashboardUI.statPlannedDuration'), value: settings.payTargetMode === 'duration' ? `${settings.payDurationMin} ${t('times.minShort')}` : formatRemaining((payShiftEndSecs - payShiftStartSecs)), icon: '📋', accent: false },
     { key: 'worked', label: t('dashboardUI.statWorkedDuration'), value: formatRemaining(workedSeconds), icon: '💪', accent: false },
-    { key: 'idle', label: t('dashboardUI.statOvertimeTotal'), value: idleLogSeconds > 0 ? formatRemaining(idleLogSeconds) : '—', icon: '📈', accent: idleLogSeconds > 0 },
-    { key: 'remaining', label: t('dashboardUI.statRemaining'), value: durationMode ? formatRemaining(Math.max(0, durationTargetSecs - payWorkSecs)) : (realSecs >= effectiveShiftEndSecs ? '—' : formatRemaining(Math.max(0, effectiveShiftEndSecs - realSecs))), icon: '⏱', accent: false }
+    { key: 'idle', label: t('dashboardUI.statOvertimeTotal'), value: idleLogSeconds > 0 ? formatRemaining(idleLogSeconds, false, 'sa', 'dk', true) : '—', icon: '📈', accent: idleLogSeconds > 0 },
+    { key: 'remaining', label: t('dashboardUI.statRemaining'), value: durationMode ? formatRemaining(Math.max(0, durationTargetSecs - payWorkSecs), false, 'sa', 'dk', true) : (realSecs >= effectiveShiftEndSecs ? '—' : formatRemaining(Math.max(0, effectiveShiftEndSecs - realSecs), false, 'sa', 'dk', true)), icon: '⏱', accent: false }
   ] : mode === 'chrono' ? [
     { key: 'worked', label: t('dashboardUI.statTotalWork'), value: formatRemaining(chronoWorkSecs), icon: '💪', accent: false },
     { key: 'break', label: t('dashboardUI.chronoTotalBreak'), value: formatRemaining(chronoBreakSecs), icon: '☕', accent: false },
@@ -399,8 +399,8 @@ export default function Dashboard() {
     { key: 'end', label: t('dashboardUI.statShiftEnd'), value: shiftEndTime, icon: '🌇', accent: false },
     { key: 'planned', label: t('dashboardUI.statPlannedDuration'), value: formatRemaining(plannedMinutes * 60), icon: '📋', accent: false },
     { key: 'worked', label: t('dashboardUI.statWorkedDuration'), value: formatRemaining(workedSeconds), icon: '💪', accent: false },
-    { key: 'idle', label: t('dashboardUI.statOvertimeTotal'), value: idleLogSeconds > 0 ? formatRemaining(idleLogSeconds) : '—', icon: '📈', accent: idleLogSeconds > 0 },
-    { key: 'remaining', label: t('dashboardUI.statRemaining'), value: realSecs >= effectiveShiftEndSecs ? '—' : formatRemaining(Math.max(0, effectiveShiftEndSecs - realSecs)), icon: '⏱', accent: false }
+    { key: 'idle', label: t('dashboardUI.statOvertimeTotal'), value: idleLogSeconds > 0 ? formatRemaining(idleLogSeconds, false, 'sa', 'dk', true) : '—', icon: '📈', accent: idleLogSeconds > 0 },
+    { key: 'remaining', label: t('dashboardUI.statRemaining'), value: realSecs >= effectiveShiftEndSecs ? '—' : formatRemaining(Math.max(0, effectiveShiftEndSecs - realSecs), false, 'sa', 'dk', true), icon: '⏱', accent: false }
   ]
 
   // Weekly heatmap — last 7 days from dailyLogs
@@ -737,7 +737,7 @@ export default function Dashboard() {
                     </p>
                     <p className="mt-2">
                       <span className="text-xs text-slate-400">{t('dashboardUI.totalOvertime')}:</span>{' '}
-                      <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds)}</span>
+                      <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds, false, 'sa', 'dk', true)}</span>
                     </p>
                   </div>
                 </div>
@@ -784,7 +784,7 @@ export default function Dashboard() {
                             </p>
                             <p>
                               <span className="text-xs text-slate-400">{t('dashboardUI.payRemainingLabel')}:</span>{' '}
-                              <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(Math.max(0, durationTargetSecs - payWorkSecs))}</span>
+                              <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(Math.max(0, durationTargetSecs - payWorkSecs), false, 'sa', 'dk', true)}</span>
                             </p>
                           </div>
                           <div className="h-2.5 w-full bg-slate-800 rounded-full overflow-hidden border border-white/5 mt-3">
@@ -929,7 +929,7 @@ export default function Dashboard() {
                     <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1">
                       <p>
                         <span className="text-xs text-slate-400">{t('dashboardUI.remainingOvertime')}:</span>{' '}
-                        <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds)}</span>
+                        <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds, false, 'sa', 'dk', true)}</span>
                       </p>
                       <p>
                         <span className="text-xs text-slate-400">{t('dashboardUI.paidBack')}:</span>{' '}
@@ -982,7 +982,7 @@ export default function Dashboard() {
                     </p>
                     <p className="mt-2">
                       <span className="text-xs text-slate-400">{t('dashboardUI.totalOvertime')}:</span>{' '}
-                      <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds)}</span>
+                      <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds, false, 'sa', 'dk', true)}</span>
                     </p>
                   </div>
                 </div>
@@ -1017,7 +1017,7 @@ export default function Dashboard() {
                     )}
                     <p className="mt-2">
                       <span className="text-xs text-slate-400">{t('dashboardUI.totalOvertime')}:</span>{' '}
-                      <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds)}</span>
+                      <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds, false, 'sa', 'dk', true)}</span>
                     </p>
                   </div>
                 </div>
@@ -1064,7 +1064,7 @@ export default function Dashboard() {
                   <span className={`text-4xl font-semibold tracking-tight ${
                     isIdle ? 'text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.2)]' : colors?.text || 'text-slate-300'
                   }`}>
-                    {isShiftFinished ? '00:00' : isIdle ? formatRemaining(idleSeconds) : remainingTimeStr}
+                    {isShiftFinished ? '00:00:00' : isIdle ? formatRemaining(idleSeconds, false, 'sa', 'dk', true) : remainingTimeStr}
                   </span>
                 </div>
                 {currentActivity && (

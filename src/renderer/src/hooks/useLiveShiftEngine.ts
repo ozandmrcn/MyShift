@@ -21,14 +21,17 @@ export function secondsToHHMM(totalSecs: number): string {
 }
 
 // Helper to format remaining time or overtime
-export function formatRemaining(totalSecs: number, isOvertime = false, hLabel = 'sa', mLabel = 'dk'): string {
-  if (typeof totalSecs !== 'number' || !Number.isFinite(totalSecs) || totalSecs <= 0) return '00:00'
+export function formatRemaining(totalSecs: number, isOvertime = false, hLabel = 'sa', mLabel = 'dk', showSeconds = false): string {
+  if (typeof totalSecs !== 'number' || !Number.isFinite(totalSecs) || totalSecs <= 0) return showSeconds ? '00:00:00' : '00:00'
   const h = Math.floor(totalSecs / 3600)
   const m = Math.floor((totalSecs % 3600) / 60)
   const s = totalSecs % 60
   
   const prefix = isOvertime ? '+' : ''
   
+  if (showSeconds) {
+    return `${prefix}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }
   if (h > 0) {
     return `${prefix}${h}${hLabel} ${m.toString().padStart(2, '0')}${mLabel}`
   }
@@ -840,7 +843,7 @@ export function useLiveShiftEngine() {
     currentDateStr,
     activeTemplate: resolvedTemplate,
     ...engineState,
-    remainingTimeStr: formatRemaining(engineState.remainingSeconds, engineState.isOvertime),
+    remainingTimeStr: formatRemaining(engineState.remainingSeconds, engineState.isOvertime, hLabel, mLabel, true),
     effectiveTime: secondsToHHMM(effectiveSecs),
     effectiveSecs,
     durationMode,
