@@ -202,6 +202,7 @@ function ActivityModal({
               <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
                 {t('shiftEditorUI.quickTemplates')}
               </label>
+              <p className="text-[10px] text-slate-500 mb-2 leading-relaxed">{t('shiftEditorUI.autoStackHint')}</p>
               <div className="flex flex-wrap gap-1.5">
                 {ACTIVITY_PRESETS.map((p, i) => (
                   <button
@@ -440,6 +441,7 @@ export default function ShiftEditor() {
     addTurkishHolidays
   } = useShiftStore()
   const mode = useShiftStore((s) => s.settings.mode)
+  const debugMode = useShiftStore((s) => s.settings.debugMode)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null)
@@ -489,16 +491,80 @@ export default function ShiftEditor() {
     saveTemplate({ ...selected, customDates: (selected.customDates || []).filter(d => d !== date) })
   }
 
+  // ── Debug: test-template generator ──────────────────────────────
+  // Builds a 7-hour work day (+ breaks) starting from now (+ optional offset), then
+  // pins it to today as the active template so the whole app is instantly testable.
+  const handleGenerateDebugTemplate = (offsetMin: number) => {
+    const d = new Date()
+    d.setSeconds(0, 0)
+    d.setMinutes(d.getMinutes() + offsetMin)
+    const start = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+    const todayStr = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+
+    const plan: Array<{ name: string; icon: string; color: string; isBreak: boolean; durMin: number }> = [
+      { name: `${t('shiftEditorUI.presetWork')} 1`, icon: '💻', color: 'blue', isBreak: false, durMin: 120 },
+      { name: t('shiftEditorUI.presetTea'), icon: '☕', color: 'orange', isBreak: true, durMin: 15 },
+      { name: `${t('shiftEditorUI.presetWork')} 2`, icon: '💻', color: 'blue', isBreak: false, durMin: 120 },
+      { name: t('shiftEditorUI.presetMeal'), icon: '🍔', color: 'amber', isBreak: true, durMin: 30 },
+      { name: `${t('shiftEditorUI.presetWork')} 3`, icon: '💻', color: 'blue', isBreak: false, durMin: 120 },
+      { name: t('shiftEditorUI.presetTea'), icon: '☕', color: 'orange', isBreak: true, durMin: 15 },
+      { name: `${t('shiftEditorUI.presetWork')} 4`, icon: '💻', color: 'blue', isBreak: false, durMin: 60 },
+    ]
+
+    const activities: Activity[] = []
+    let cur = start
+    for (const p of plan) {
+      const [h, m] = cur.split(':').map(Number)
+      const endMins = h * 60 + m + p.durMin
+      const endTime = `${(Math.floor(endMins / 60) % 24).toString().padStart(2, '0')}:${(endMins % 60).toString().padStart(2, '0')}`
+      activities.push({
+        id: crypto.randomUUID(),
+        name: p.name,
+        icon: p.icon,
+        color: p.color,
+        startTime: cur,
+        endTime,
+        duration: p.durMin,
+        notificationEnabled: true,
+        notificationSound: 'default',
+        notes: '',
+        isBreak: p.isBreak
+      })
+      cur = endTime
+    }
+
+    const generatedId = crypto.randomUUID()
+    const newTemplate: ShiftTemplate = {
+      id: generatedId,
+      name: `${t('shiftEditorUI.testTemplateName')} (${start})`,
+      activities,
+      weekdays: [1, 2, 3, 4, 5, 6, 0],
+      customDates: [todayStr],
+      isActive: true
+    }
+    saveTemplate(newTemplate)
+    setSelectedId(generatedId)
+  }
+
   // ── Activity handlers ──────────────────────────────────────────────────────
   const handleAddActivity = () => {
+    // Convenience: a new activity picks up where the previous one left off, so
+    // blocks and preset breaks stack onto the schedule instead of a fixed 09:00.
+    const sorted = selected ? [...selected.activities].sort((a, b) => a.startTime.localeCompare(b.startTime)) : []
+    const prev = sorted[sorted.length - 1]
+    const startTime = prev ? prev.endTime : '09:00'
+    const [sh, sm] = startTime.split(':').map(Number)
+    let endMins = sh * 60 + sm + 60
+    if (endMins >= 24 * 60) endMins = 23 * 60 + 59
+    const endTime = `${Math.floor(endMins / 60).toString().padStart(2, '0')}:${(endMins % 60).toString().padStart(2, '0')}`
     setEditingActivity({
       id: crypto.randomUUID(),
       name: t('shiftEditorUI.newActivityName'),
       icon: '💻',
       color: 'blue',
-      startTime: '09:00',
-      endTime: '10:00',
-      duration: 60,
+      startTime,
+      endTime,
+      duration: calculateDuration(startTime, endTime),
       notificationEnabled: true,
       notificationSound: 'default',
       notes: '',
@@ -625,6 +691,29 @@ export default function ShiftEditor() {
         {mode === 'chrono' && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[11px] text-amber-200 leading-relaxed">
             {t('shiftEditorUI.chronoModeActive')}
+          </div>
+        )}
+
+        {/* Debug — test-template generator */}
+        {debugMode && (
+          <div className="fluent-card p-4 flex flex-col gap-2 border-amber-500/30">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🧪</span>
+              <h3 className="font-semibold text-slate-200 text-sm">{t('shiftEditorUI.debugSection')}</h3>
+            </div>
+            <p className="text-[10px] text-slate-500 leading-relaxed">{t('shiftEditorUI.debugDesc')}</p>
+            <button
+              onClick={() => handleGenerateDebugTemplate(0)}
+              className="w-full text-xs bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 px-2.5 py-2 rounded-lg font-semibold transition-colors"
+            >
+              {t('shiftEditorUI.testNow')}
+            </button>
+            <button
+              onClick={() => handleGenerateDebugTemplate(1)}
+              className="w-full text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-300/90 border border-amber-500/20 px-2.5 py-2 rounded-lg font-medium transition-colors"
+            >
+              {t('shiftEditorUI.testPlus1')}
+            </button>
           </div>
         )}
 

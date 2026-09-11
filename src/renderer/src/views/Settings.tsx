@@ -88,12 +88,25 @@ function Row({ icon, title, description, right }: { icon: string; title: string;
 }
 
 export default function SettingsView() {
-  const { settings, updateSettings, clearHistory, factoryReset } = useShiftStore()
+  const { settings, updateSettings, clearHistory, factoryReset, dayShiftSecs, shiftDay, myshiftPaused, setDayShift, resumeDay } = useShiftStore()
   const { t, language } = useT()
   const api = window.electronAPI
 
   const MONTH_NAMES = language === 'tr' ? MONTH_NAMES_TR : MONTH_NAMES_EN
   const THEMES = useMemo(() => THEME_KEYS.map(k => ({ key: k, label: t(THEME_LABEL_KEY[k] as any), swatch: THEMES_SWATCHES[k] })), [language])
+
+  // Today's MyShift day-guard key — restores which "today" the shift/pause state belongs to.
+  const todayStrLocal = (() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+  })()
+  const shiftActiveToday = shiftDay === todayStrLocal && dayShiftSecs > 0
+  const pausedToday = myshiftPaused && shiftDay === todayStrLocal
+  const fmtShiftHours = (secs: number) => {
+    const h = Math.floor(secs / 3600)
+    const m = Math.floor((secs % 3600) / 60)
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
 
   // Parse birthday state
   const [bDay, setBDay] = useState(1)
@@ -271,6 +284,64 @@ export default function SettingsView() {
                 <option value="tr">Türkçe</option>
               </select>
             }
+          />
+        </Section>
+
+        {/* Bugünün Vardiya Durumu — kaydırma/duraklatma sıfırlamaları Dashboard'dan
+            buraya taşındı (moral-bozucu "kaydırıldı" rozetleri yerine) */}
+        <Section
+          icon="📌"
+          title={t('settingsView.shiftStateSection')}
+          description={t('settingsView.shiftStateSectionDesc')}
+        >
+          <Row
+            icon="⏩"
+            title={t('settingsView.todayShifted')}
+            description={shiftActiveToday ? t('settingsView.todayShiftedValue', { time: `+${fmtShiftHours(dayShiftSecs)}` }) : t('settingsView.todayShiftedNone')}
+            right={
+              <button
+                onClick={() => setDayShift(0)}
+                disabled={!shiftActiveToday}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex-shrink-0 ${
+                  shiftActiveToday
+                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20'
+                    : 'bg-white/5 border border-white/10 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                {t('settingsView.resetShiftBtn')}
+              </button>
+            }
+          />
+          <Row
+            icon="⏸"
+            title={t('settingsView.pauseState')}
+            description={pausedToday ? t('settingsView.pausedLabel') : t('settingsView.pauseNone')}
+            right={
+              pausedToday ? (
+                <button
+                  onClick={resumeDay}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20 transition-colors flex-shrink-0"
+                >
+                  {t('settingsView.resumeShiftBtn')}
+                </button>
+              ) : (
+                <span className="text-xs text-slate-500 flex-shrink-0">{t('settingsView.pauseNone')}</span>
+              )
+            }
+          />
+        </Section>
+
+        {/* Debug modu */}
+        <Section
+          icon="🧪"
+          title={t('settingsView.debugMode')}
+          description={t('settingsView.debugModeDesc')}
+        >
+          <Row
+            icon="🧪"
+            title={t('settingsView.debugMode')}
+            description={t('settingsView.debugModeDesc')}
+            right={<Toggle checked={settings.debugMode} onChange={(v) => updateSettings({ debugMode: v })} />}
           />
         </Section>
 

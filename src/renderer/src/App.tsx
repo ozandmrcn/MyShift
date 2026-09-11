@@ -10,9 +10,11 @@ import DataView from './views/Data'
 import ObserveView from './views/Observe'
 import TodaySummary from './views/TodaySummary'
 import { useBreakReminders, ReminderBanner } from './components/BreakReminders'
+import { useT } from './i18n/useT'
 
 export default function App() {
   const { loadFromStore, isLoading } = useShiftStore()
+  const { t } = useT()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   // While observation is recording, the app is locked to the Observe tab — the
   // user chose to collect pure data, so the shift tracker UI is put away.
@@ -66,7 +68,7 @@ export default function App() {
           <div className="absolute inset-0 rounded-full border-4 border-white/10" />
           <div className="absolute inset-0 rounded-full border-4 accent-border border-t-transparent animate-spin" />
         </div>
-        <span className="text-xs uppercase tracking-widest text-slate-500 font-semibold mt-4">Veriler Yükleniyor...</span>
+        <span className="text-xs uppercase tracking-widest text-slate-500 font-semibold mt-4">{t('sidebar.loading')}</span>
       </div>
     )
   }
@@ -113,7 +115,7 @@ export default function App() {
                     }`}
                   >
                     <span className="text-lg">📋</span>
-                    <span className="hidden md:inline">Bugünün Özeti</span>
+                    <span className="hidden md:inline">{t('sidebar.summary')}</span>
                   </NavLink>
 
                   <NavLink 
@@ -125,7 +127,7 @@ export default function App() {
                     }`}
                   >
                     <span className="text-lg">🗓️</span>
-                    <span className="hidden md:inline">Geçmiş</span>
+                    <span className="hidden md:inline">{t('sidebar.history')}</span>
                   </NavLink>
                 </>
               )}
@@ -139,7 +141,7 @@ export default function App() {
                 }`}
               >
                 <span className="text-lg">👁️</span>
-                <span className="hidden md:inline">Gözlem Modu</span>
+                <span className="hidden md:inline">{t('sidebar.observe')}</span>
               </NavLink>
 
               {!recording && (
@@ -153,7 +155,7 @@ export default function App() {
                     }`}
                   >
                     <span className="text-lg">🛰️</span>
-                    <span className="hidden md:inline">Toplanan Veriler</span>
+                    <span className="hidden md:inline">{t('sidebar.data')}</span>
                   </NavLink>
 
                   <NavLink 
@@ -165,7 +167,7 @@ export default function App() {
                     }`}
                   >
                     <span className="text-lg">⚙️</span>
-                    <span className="hidden md:inline">Vardiya Editörü</span>
+                    <span className="hidden md:inline">{t('sidebar.shiftEditor')}</span>
                   </NavLink>
                 </>
               )}
@@ -183,17 +185,17 @@ export default function App() {
                   }`}
                 >
                   <span className="text-lg">🛠️</span>
-                  <span className="hidden md:inline">Ayarlar</span>
+                  <span className="hidden md:inline">{t('sidebar.settings')}</span>
                 </NavLink>
               )}
 
               <button
                 onClick={() => setSidebarOpen(false)}
                 className="flex items-center justify-center md:justify-start gap-3 p-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-white/4 hover:text-slate-200 transition-all w-full"
-                title="Menüyü Gizle"
+                title={t('sidebar.hideMenu')}
               >
                 <span className="text-lg">◀</span>
-                <span className="hidden md:inline">Menüyü Gizle</span>
+                <span className="hidden md:inline">{t('sidebar.hideMenu')}</span>
               </button>
             </div>
           </nav>
@@ -205,10 +207,10 @@ export default function App() {
               <button
                 onClick={() => setSidebarOpen(true)}
                 className="absolute left-2 top-2 z-30 flex items-center gap-2 px-2.5 py-2 rounded-lg bg-slate-800/80 border border-white/10 text-slate-300 text-xs font-medium hover:bg-slate-700/80 transition-colors shadow-lg"
-                title="Menüyü Aç"
+                title={t('sidebar.openMenu')}
               >
                 <span className="text-sm">☰</span>
-                <span className="hidden md:inline">Menü</span>
+                <span className="hidden md:inline">{t('sidebar.openMenu')}</span>
               </button>
             )}
             {/* Smooth page fade transition container */}

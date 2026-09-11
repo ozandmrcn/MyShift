@@ -100,6 +100,10 @@ export interface Settings {
 
   // UI Language
   language: 'en' | 'tr'
+
+  // Debug mode — shows test/tooling affordances (e.g. "Deneme Şablonu Üret" in the
+  // shift editor). Hidden during normal use.
+  debugMode: boolean
 }
 
 export interface DayLog {
@@ -157,6 +161,29 @@ interface ShiftStore {
   // A work activity (after the first of the day) only advances once confirmed;
   // until then every extra second counts as aşım. Breaks never need confirmation.
   confirmedActivities: string[] // activity ids confirmed today
+
+  // MyShift "kaydırma" — per-day standing shift (seconds). Positive = schedule
+  // shifted FORWARD (effective time runs that many seconds behind real time), so a
+  // late start or a pause pushes the whole day forward while the template is untouched.
+  // Effective time = real time + timeOffset(rewind) - dayShiftSecs - pausedElapsed.
+  dayShiftSecs: number
+  shiftDay: string // "YYYY-MM-DD" this shift belongs to (drives the daily auto-reset)
+  myshiftPaused: boolean // day paused — effective time frozen (no aşım, no cuts)
+  pauseWallAt: number | null // Date.now() when the pause began (live elapsed growth)
+
+  // MyShift flexible breaks (per-day) — scheduled "Mola mı?" minutes are pooled and
+  // can be spent whenever the user wants via an explicit break session. Pool minutes
+  // are broken down per scheduled break activity (`flexBreakSecs`), so each break is
+  // tracked & spent individually; `flexActiveId` is the break currently running.
+  flexMode: boolean
+  flexTotalSecs: number // initial pool (sum of scheduled break minutes)
+  flexUsedSecs: number // seconds already consumed from the pool
+  flexBreakSecs: Record<string, number> // per-activity allowance (activity id -> seconds)
+  flexUsedBy: Record<string, number> // per-activity consumed seconds
+  flexActiveId: string | null // the scheduled break activity currently running (null = none)
+  flexDay: string // "YYYY-MM-DD" the pool belongs to (daily auto-reset)
+  flexRunningMs: number | null // Date.now() while a flexible break runs (null = none)
+  flexFrozenEff: number // effective seconds-of-day at flex break start
 
   // Day's GROSS aşım log — keeps accruing, is never reduced by payback or by resetIdle,
   // and resets only at the day change. It exists purely to record how much aşım was
@@ -224,6 +251,13 @@ interface ShiftStore {
   uncompleteShift: (dateStr: string) => Promise<void>
   confirmActivity: (activityId: string) => void
   setTimeOffset: (offset: number) => void
+  setDayShift: (secs: number) => void
+  pauseDay: () => void
+  resumeDay: () => void
+  enableFlex: (totalPoolSecs: number, byId?: Record<string, number>) => void
+  disableFlex: () => void
+  flexStartBreak: (breakId: string, freezeEff: number) => void
+  flexStopBreak: () => void
   updateIdle: (isIdleNow: boolean) => void
   resetIdle: () => void
   startPayback: () => void
@@ -281,6 +315,12 @@ const defaultSettings: Settings = {
   widgetLon: null,
   clockFont: 'jetbrains',
   language: 'en',
+  debugMode: false,
+}
+
+// Today's date as "YYYY-MM-DD" — used by the per-day guards of the shift / flex state
+function todayStr(d = new Date()): string {
+  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
 }
 
 // Helper to calculate duration in minutes between HH:mm and HH:mm
@@ -317,7 +357,20 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       chronoStartedAt: s.chronoStartedAt,
       chronoWorkAccumMs: s.chronoWorkAccumMs,
       chronoBreakAccumMs: s.chronoBreakAccumMs,
-      chronoDay: s.chronoDay
+      chronoDay: s.chronoDay,
+      dayShiftSecs: s.dayShiftSecs,
+      shiftDay: s.shiftDay,
+      myshiftPaused: s.myshiftPaused,
+      pauseWallAt: s.pauseWallAt,
+      flexMode: s.flexMode,
+      flexTotalSecs: s.flexTotalSecs,
+      flexUsedSecs: s.flexUsedSecs,
+      flexBreakSecs: s.flexBreakSecs,
+      flexUsedBy: s.flexUsedBy,
+      flexActiveId: s.flexActiveId,
+      flexDay: s.flexDay,
+      flexRunningMs: s.flexRunningMs,
+      flexFrozenEff: s.flexFrozenEff
     }
     const api = window.electronAPI
     if (api && api.store) {
@@ -367,6 +420,19 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   completedShifts: [],
   isLoading: true,
   timeOffset: 0,
+  dayShiftSecs: 0,
+  shiftDay: '',
+  myshiftPaused: false,
+  pauseWallAt: null,
+  flexMode: false,
+  flexTotalSecs: 0,
+  flexUsedSecs: 0,
+  flexBreakSecs: {},
+  flexUsedBy: {},
+  flexActiveId: null,
+  flexDay: '',
+  flexRunningMs: null,
+  flexFrozenEff: 0,
   confirmedActivities: [],
   idleAccumMs: 0,
   idleStartTs: null,
@@ -444,6 +510,19 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           chronoWorkAccumMs?: number
           chronoBreakAccumMs?: number
           chronoDay?: string
+          dayShiftSecs?: number
+          shiftDay?: string
+          myshiftPaused?: boolean
+          pauseWallAt?: number | null
+          flexMode?: boolean
+          flexTotalSecs?: number
+          flexUsedSecs?: number
+          flexBreakSecs?: Record<string, number>
+          flexUsedBy?: Record<string, number>
+          flexActiveId?: string | null
+          flexDay?: string
+          flexRunningMs?: number | null
+          flexFrozenEff?: number
         } | null
 
         const savedDayLogs = (await api.store.get('dailyLogs', {})) as Record<string, DayLog>
@@ -498,6 +577,19 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           chronoWorkAccumMs: sameDay ? savedIdle.chronoWorkAccumMs ?? 0 : 0,
           chronoBreakAccumMs: sameDay ? savedIdle.chronoBreakAccumMs ?? 0 : 0,
           chronoDay: todayStr,
+          dayShiftSecs: sameDay ? savedIdle.dayShiftSecs ?? 0 : 0,
+          shiftDay: todayStr,
+          myshiftPaused: sameDay ? savedIdle.myshiftPaused ?? false : false,
+          pauseWallAt: sameDay ? savedIdle.pauseWallAt ?? null : null,
+          flexMode: sameDay ? savedIdle.flexMode ?? false : false,
+          flexTotalSecs: sameDay ? savedIdle.flexTotalSecs ?? 0 : 0,
+          flexUsedSecs: sameDay ? savedIdle.flexUsedSecs ?? 0 : 0,
+          flexBreakSecs: sameDay ? savedIdle.flexBreakSecs ?? {} : {},
+          flexUsedBy: sameDay ? savedIdle.flexUsedBy ?? {} : {},
+          flexActiveId: sameDay ? savedIdle.flexActiveId ?? null : null,
+          flexDay: todayStr,
+          flexRunningMs: sameDay ? savedIdle.flexRunningMs ?? null : null,
+          flexFrozenEff: sameDay ? savedIdle.flexFrozenEff ?? 0 : 0,
           runningBreak: breakSameDay ? savedBreak.runningBreak ?? null : null,
           breakDay: todayStr,
           breakUsage: breakSameDay ? savedBreak.breakUsage ?? {} : {},
@@ -546,6 +638,19 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           chronoWorkAccumMs: bSameDay ? idleParsed.chronoWorkAccumMs ?? 0 : 0,
           chronoBreakAccumMs: bSameDay ? idleParsed.chronoBreakAccumMs ?? 0 : 0,
           chronoDay: bToday,
+          dayShiftSecs: bSameDay ? idleParsed.dayShiftSecs ?? 0 : 0,
+          shiftDay: bToday,
+          myshiftPaused: bSameDay ? idleParsed.myshiftPaused ?? false : false,
+          pauseWallAt: bSameDay ? idleParsed.pauseWallAt ?? null : null,
+          flexMode: bSameDay ? idleParsed.flexMode ?? false : false,
+          flexTotalSecs: bSameDay ? idleParsed.flexTotalSecs ?? 0 : 0,
+          flexUsedSecs: bSameDay ? idleParsed.flexUsedSecs ?? 0 : 0,
+          flexBreakSecs: bSameDay ? idleParsed.flexBreakSecs ?? {} : {},
+          flexUsedBy: bSameDay ? idleParsed.flexUsedBy ?? {} : {},
+          flexActiveId: bSameDay ? idleParsed.flexActiveId ?? null : null,
+          flexDay: bToday,
+          flexRunningMs: bSameDay ? idleParsed.flexRunningMs ?? null : null,
+          flexFrozenEff: bSameDay ? idleParsed.flexFrozenEff ?? 0 : 0,
           runningBreak: bBreakSameDay ? breakParsed.runningBreak ?? null : null,
           breakDay: bToday,
           breakUsage: bBreakSameDay ? breakParsed.breakUsage ?? {} : {},
@@ -817,6 +922,118 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     set({ timeOffset: offset })
   },
 
+  // MyShift "kaydırma" — apply a standing shift so the first activity effectively
+  // starts at the requested time. Passing 0 clears today's shift (and any pause).
+  setDayShift: (secs) => {
+    const day = todayStr()
+    set({ dayShiftSecs: Math.max(0, Math.round(secs)), shiftDay: day, myshiftPaused: false, pauseWallAt: null })
+    persistIdle()
+  },
+
+  // Pausing freezes effective time where it stands (no aşım, no cuts into breaks).
+  // The paused elapsed time is folded back into the standing shift on resume.
+  pauseDay: () => {
+    const s = get()
+    if (s.myshiftPaused) return
+    const day = todayStr()
+    set({
+      myshiftPaused: true,
+      pauseWallAt: Date.now(),
+      shiftDay: day,
+      dayShiftSecs: s.shiftDay === day ? s.dayShiftSecs : 0
+    })
+    persistIdle()
+  },
+
+  resumeDay: () => {
+    const s = get()
+    const day = todayStr()
+    if (!s.myshiftPaused) {
+      set({ myshiftPaused: false, pauseWallAt: null, shiftDay: day })
+      persistIdle()
+      return
+    }
+    const base = s.shiftDay === day ? s.dayShiftSecs : 0
+    const elapsed = s.pauseWallAt !== null ? Math.max(0, (Date.now() - s.pauseWallAt) / 1000) : 0
+    set({ myshiftPaused: false, pauseWallAt: null, shiftDay: day, dayShiftSecs: base + elapsed })
+    persistIdle()
+  },
+
+  // Flexible breaks: pool today's scheduled break minutes and spend them freely.
+  // Each scheduled "Mola mı?" activity gets its own allowance (`byId`), so the user
+  // spends breaks individually and a break can never take time away from another one.
+  enableFlex: (totalPoolSecs, byId) => {
+    set({
+      flexMode: true,
+      flexTotalSecs: Math.max(0, Math.round(totalPoolSecs)),
+      flexUsedSecs: 0,
+      flexBreakSecs: byId ?? {},
+      flexUsedBy: {},
+      flexActiveId: null,
+      flexDay: todayStr(),
+      flexRunningMs: null,
+      flexFrozenEff: 0
+    })
+    persistIdle()
+  },
+
+  disableFlex: () => {
+    const s = get()
+    if (s.flexRunningMs !== null) {
+      const elapsed = Math.max(0, Math.round((Date.now() - s.flexRunningMs) / 1000))
+      const target = s.flexActiveId
+      let usedBy = s.flexUsedBy
+      if (target) {
+        const own = s.flexBreakSecs[target] ?? s.flexTotalSecs
+        usedBy = { ...usedBy, [target]: Math.min(own, (usedBy[target] ?? 0) + elapsed) }
+      }
+      const used = Object.values(usedBy).reduce((a, b) => a + b, 0)
+      set({ flexMode: false, flexUsedSecs: Math.min(s.flexTotalSecs, used), flexUsedBy: usedBy, flexActiveId: null, flexRunningMs: null, flexFrozenEff: 0 })
+    } else {
+      set({ flexMode: false, flexRunningMs: null, flexActiveId: null, flexFrozenEff: 0 })
+    }
+    persistIdle()
+  },
+
+  flexStartBreak: (breakId, freezeEff) => {
+    const s = get()
+    if (s.myshiftPaused) return
+    const day = todayStr()
+    if (s.flexDay !== day) {
+      set({ flexMode: false, flexTotalSecs: 0, flexUsedSecs: 0, flexBreakSecs: {}, flexUsedBy: {}, flexActiveId: null, flexDay: day, flexRunningMs: null, flexFrozenEff: 0 })
+      persistIdle()
+      return
+    }
+    if (s.flexRunningMs !== null) return
+    const own = s.flexBreakSecs[breakId] ?? s.flexTotalSecs
+    const usedNow = s.flexUsedBy[breakId] ?? 0
+    // A break may be paused and resumed later — only the minutes already spent
+    // are consumed, so a partially used break stays restorable ("kullanılan
+    // kadar biter"). Only a fully spent break is locked for the day.
+    const remaining = own - usedNow
+    if (remaining <= 0) return
+    set({ flexRunningMs: Date.now(), flexActiveId: breakId, flexFrozenEff: Math.max(0, Math.round(freezeEff)) })
+    persistIdle()
+  },
+
+  flexStopBreak: () => {
+    const s = get()
+    if (s.flexRunningMs === null) return
+    if (s.flexActiveId === null) {
+      set({ flexRunningMs: null, flexFrozenEff: 0 })
+      persistIdle()
+      return
+    }
+    const elapsed = Math.max(0, Math.round((Date.now() - s.flexRunningMs) / 1000))
+    const target = s.flexActiveId
+    const own = s.flexBreakSecs[target] ?? s.flexTotalSecs
+    const consumed = Math.min(own, (s.flexUsedBy[target] ?? 0) + elapsed)
+    const usedBy = { ...s.flexUsedBy, [target]: consumed }
+    const used = Object.values(usedBy).reduce((a, b) => a + b, 0)
+    set({ flexUsedSecs: Math.min(s.flexTotalSecs, used), flexUsedBy: usedBy, flexActiveId: null, flexRunningMs: null, flexFrozenEff: 0 })
+    persistIdle()
+  },
+
   confirmActivity: (activityId) => {
     const { confirmedActivities } = get()
     if (confirmedActivities.includes(activityId)) return
@@ -1069,7 +1286,20 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       chronoMode: 'idle',
       chronoStartedAt: null,
       chronoWorkAccumMs: 0,
-      chronoBreakAccumMs: 0
+      chronoBreakAccumMs: 0,
+      dayShiftSecs: 0,
+      shiftDay: day,
+      myshiftPaused: false,
+      pauseWallAt: null,
+      flexMode: false,
+      flexTotalSecs: 0,
+      flexUsedSecs: 0,
+      flexBreakSecs: {},
+      flexUsedBy: {},
+      flexActiveId: null,
+      flexDay: day,
+      flexRunningMs: null,
+      flexFrozenEff: 0
     })
     persistIdle()
     persistBreak()

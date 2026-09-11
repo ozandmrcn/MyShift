@@ -1,0 +1,78 @@
+{
+	"windowBounds": {
+		"width": 1536,
+		"height": 816
+	},
+	"idleState": {
+		"idleAccumMs": 0,
+		"idleStartTs": null,
+		"idleDay": "2026-09-11",
+		"idleLogMs": 0,
+		"paybackAccumMs": 0,
+		"paybackStartTs": null,
+		"payWorkAccumMs": 0,
+		"payWorkStartTs": null,
+		"payWorkDay": "2026-09-11",
+		"payPaused": false,
+		"chronoMode": "idle",
+		"chronoStartedAt": null,
+		"chronoWorkAccumMs": 0,
+		"chronoBreakAccumMs": 0,
+		"chronoDay": "2026-09-11",
+		"dayShiftSecs": 0,
+		"shiftDay": "2026-09-11",
+		"myshiftPaused": false,
+		"pauseWallAt": null,
+		"flexMode": false,
+		"flexTotalSecs": 0,
+		"flexUsedSecs": 0,
+		"flexDay": "2026-09-11",
+		"flexRunningMs": null,
+		"flexFrozenEff": 0
+	},
+	"breakState": {
+		"runningBreak": null,
+		"breakDay": "2026-09-11",
+		"breakUsage": {},
+		"breakCount": 0,
+		"lastBreakEndedAt": null
+	},
+	"todayDetail": {
+		"breakLog": [],
+		"idleLog": [],
+		"paybackLog": [],
+		"todayHourly": {
+			"03:00": {
+				"idleSeconds": 0,
+				"paybackSeconds": 0,
+				"cursorIdle": 0,
+				"cursorPayback": 0
+			},
+			"04:00": {
+				"idleSeconds": 0,
+				"paybackSeconds": 0,
+				"cursorIdle": 0,
+				"cursorPayback": 0
+			}
+		},
+		"confirmedActivities": []
+	},
+	"appUsage": {
+		"2026-09-11": {
+			"explorer": 3,
+			"electron": 3,
+			"comet": 9
+		}
+	},
+	"dailyLogs": {
+		"2026-09-11": {
+			"workedSeconds": 0,
+			"idleSeconds": 0,
+			"paybackSeconds": 0,
+			"breakSeconds": 0,
+			"breakCount": 0,
+			"completed": false,
+			"mode": "myshift"
+		}
+	}
+}

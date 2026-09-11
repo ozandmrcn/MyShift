@@ -304,6 +304,8 @@ export default function Dashboard() {
     effectiveTime,
     effectiveSecs,
     timeOffset,
+    activeShiftSecs,
+    isPaused,
     durationMode,
     durationTargetSecs,
     payWorkSecs,
@@ -317,7 +319,7 @@ export default function Dashboard() {
     chronoStartedAt: _chronoStartedAt
   } = useLiveShiftEngine()
 
-  const { completeShift, extendActiveShift, uncompleteShift, setTimeOffset, stopPayback, finishPayback, confirmActivity, dailyLogs, togglePayPause } = useShiftStore()
+  const { completeShift, extendActiveShift, uncompleteShift, setTimeOffset, stopPayback, finishPayback, confirmActivity, dailyLogs, togglePayPause, setDayShift, pauseDay, resumeDay } = useShiftStore()
   const mode = useShiftStore((s) => s.settings.mode)
   const updateSettings = useShiftStore((s) => s.updateSettings)
   const settings = useShiftStore((s) => s.settings)
@@ -333,6 +335,14 @@ export default function Dashboard() {
   const colors = currentActivity ? getColors(currentActivity.color) : null
 
   const [confirmReset, setConfirmReset] = useState(false)
+
+  // "Orada mısın?" last-start prompt + pause/resume warning modals
+  const [greetShown, setGreetShown] = useState(false)
+  const [confirmPause, setConfirmPause] = useState(false)
+  const [confirmResume, setConfirmResume] = useState(false)
+
+  // The prompt must appear fresh each new day
+  useEffect(() => { setGreetShown(false) }, [currentDateStr])
 
   // Idle (aşım) state. In Pay mode an over-budget break (bütçesi dolmuşken
   // başlatılan mola) NOT a real break — it counts as aşım while it runs.
@@ -358,14 +368,25 @@ export default function Dashboard() {
   const isCurrentLast = !!currentActivity && sortedActivities.length > 0
     && sortedActivities[sortedActivities.length - 1].id === currentActivity.id
 
-  // Pay/Chrono: use offset-aware effective time so the time offset feature works correctly.
-  // MyShift: use the raw clock since its engine state is template-based, not time-based.
-  const realSecs = mode === 'pay' || mode === 'chrono' ? effectiveSecs : timeToSeconds(currentTimeSecs)
+  // Clock (effective vs wall): everything below uses the effective schedule clock so
+  // late-start shifts / pauses stay consistent; only the "are you here?" heuristics
+  // need the raw wall time.
+  const realSecs = effectiveSecs
+  const realClockSecs = timeToSeconds(currentTimeSecs)
   // For Pay mode: use settings times instead of template
   const payShiftStartSecs = mode === 'pay' ? timeToSeconds(`${settings.payShiftStart}:00`) : 0
   const payShiftEndSecs = mode === 'pay' ? timeToSeconds(`${settings.payShiftEnd}:00`) : 0
   const effectiveShiftEndSecs = mode === 'pay' ? payShiftEndSecs : (sortedActivities.length ? timeToSeconds(sortedActivities[sortedActivities.length - 1].endTime) : 0)
   const effectiveShiftStartSecs = mode === 'pay' ? payShiftStartSecs : (sortedActivities.length ? timeToSeconds(sortedActivities[0].startTime) : 0)
+
+  // MyShift "geç başladın mı?" — asked inline in the activity area (never a modal),
+  // straight from the moment the shift's first activity is due. Until the user
+  // answers, a "Kaydır / Kaydırma" prompt lets a late start move today's whole
+  // schedule forward so the first activity begins now.
+  const firstPlannedAct = sortedActivities[0]
+  const greetVisible = mode === 'myshift'
+    && !!firstPlannedAct && activeShiftSecs === 0 && !isPaused && !isShiftFinished && !greetShown
+    && realClockSecs >= effectiveShiftStartSecs
 
   let status = { text: '—', cls: 'text-slate-400' }
   if (mode === 'chrono') {
@@ -376,6 +397,7 @@ export default function Dashboard() {
     if (isShiftFinished) status = { text: t('dashboardUI.statusCompleted'), cls: 'text-emerald-400' }
     else if (isBeforeShift) status = { text: t('dashboardUI.statusNotStarted'), cls: 'text-slate-400' }
     else if (paybackRunning) status = { text: t('dashboardUI.statusPayback'), cls: 'text-amber-400' }
+    else if (isPaused) status = { text: t('dashboardUI.statusPaused'), cls: 'text-indigo-400' }
     else if (breakRunning && !overBudgetBreak) status = { text: t('dashboardUI.statusOnBreak'), cls: 'text-emerald-400' }
     else if (isIdle) status = { text: t('dashboardUI.statusOvertime'), cls: 'text-amber-400' }
     else if (currentActivity) status = { text: t('dashboardUI.statusOngoing'), cls: 'accent-text' }
@@ -417,18 +439,32 @@ export default function Dashboard() {
   const handleGoToNextActivity = () => {
     if (!nextActivity) return
     const targetSecs = timeToSeconds(nextActivity.startTime)
-    setTimeOffset(targetSecs - timeToSeconds(currentTimeSecs))
+    // Land effective time exactly on the target — the effective clock runs at
+    // realTime + timeOffset − shift(−pause), so the offset must undo the shift.
+    setTimeOffset(targetSecs - timeToSeconds(currentTimeSecs) + activeShiftSecs)
   }
   const handleResetIdle = () => { setConfirmReset(false); resetIdle() }
   const handleCompleteCurrentActivity = () => {
     if (!currentActivity) return
     if (isCurrentLast) { completeShift(currentDateStr); return }
     const targetSecs = timeToSeconds(currentActivity.endTime)
-    setTimeOffset(targetSecs - timeToSeconds(currentTimeSecs))
+    setTimeOffset(targetSecs - timeToSeconds(currentTimeSecs) + activeShiftSecs)
   }
   const handleConfirmPending = () => {
     if (pendingActivity) confirmActivity(pendingActivity.id)
   }
+
+  // Late start / "Orada mısın?" — shift today's schedule forward so the first
+  // activity effectively begins right now (template and planned duration untouched).
+  const handleGreetYes = () => {
+    setGreetShown(true)
+    if (realClockSecs > effectiveShiftStartSecs) setDayShift(realClockSecs - effectiveShiftStartSecs)
+  }
+  const handleGreetNotYet = () => setGreetShown(true)
+
+  // Pause / resume — both are gated behind a warning dialog.
+  const handlePause = () => { setConfirmPause(false); pauseDay() }
+  const handleResume = () => { setConfirmResume(false); resumeDay() }
 
   // ── Motivation engine (context-aware "AI" one-liner) ────────────────────────
   // State classification mirrors the old getMotivationMessage priority order.
@@ -539,6 +575,14 @@ export default function Dashboard() {
                 ↺ Geri alındı — <span className="font-mono font-bold">{effectiveTime}</span> · {t('dashboardUI.timeOverrideLive')}
               </button>
             )}
+            {isPaused && (
+              <button
+                onClick={() => setConfirmResume(true)}
+                className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-[11px] text-indigo-300 font-medium hover:bg-indigo-500/20 transition-colors"
+              >
+                ⏸ {t('dashboardUI.statusPaused')} · {t('dashboardUI.btnResume')}
+              </button>
+            )}
           </div>
           <div className="flex-1 min-w-0 text-left sm:text-right">
             <div className="flex items-center gap-2 sm:justify-end">
@@ -611,6 +655,30 @@ export default function Dashboard() {
                 ? (isChronoWork ? t('dashboardUI.headerChronoWork') : isChronoBreak ? t('dashboardUI.headerChronoBreak') : t('dashboardUI.headerChronoWaiting'))
                 : paybackRunning ? t('dashboardUI.headerPayback') : t('dashboardUI.headerCurrentActivity')}
             </span>
+
+            {greetVisible && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10">
+                <span className="text-2xl flex-shrink-0">⏩</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-300">{t('dashboardUI.greetTitle')}</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">{t('dashboardUI.greetDesc', { start: shiftStartTime, now: currentTime })}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={handleGreetNotYet}
+                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] text-slate-300 font-semibold transition-colors"
+                  >
+                    {t('dashboardUI.greetNotYet')}
+                  </button>
+                  <button
+                    onClick={handleGreetYes}
+                    className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] px-3 py-1.5 rounded-lg font-semibold transition-colors shadow-md shadow-amber-500/20"
+                  >
+                    ⏩ {t('dashboardUI.greetYes')}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {mode === 'chrono' ? (
               <div className="mt-4">
@@ -750,6 +818,33 @@ export default function Dashboard() {
                   </button>
                 </div>
               </div>
+            ) : isPaused ? (
+              <div className="mt-4">
+                <div className="flex items-start gap-4">
+                  <div className="text-5xl p-4 rounded-2xl border bg-indigo-500/10 border-indigo-500/30 shadow-lg shadow-indigo-500/10">⏸</div>
+                  <div className="flex-1 min-w-0">
+                    <h1 className="text-2xl font-semibold text-white">{t('dashboardUI.pausedTitle')}</h1>
+                    <p className="text-sm text-slate-400 mt-1">{t('dashboardUI.pausedDesc')}</p>
+                    {currentActivity && (
+                      <p className="mt-2">
+                        <span className="text-xs text-slate-400">{t('dashboardUI.myshiftTimeLabel')}:</span>{' '}
+                        <span className="font-semibold text-slate-200">{currentActivity.icon} {currentActivity.name}</span>
+                        <span className="mx-2 text-slate-600">•</span>
+                        <span className="text-xs text-slate-400">{t('dashboardUI.statRemaining')}:</span>{' '}
+                        <span className="font-mono font-semibold text-slate-200">{formatRemaining(effectiveShiftEndSecs - realSecs, false, 'sa', 'dk', true)}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={() => setConfirmResume(true)}
+                    className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-emerald-500/20"
+                  >
+                    {t('dashboardUI.btnResume')}
+                  </button>
+                </div>
+              </div>
             ) : currentActivity ? (
               <div className="mt-4">
                 {mode === 'pay' ? (
@@ -877,7 +972,14 @@ export default function Dashboard() {
                         )}
                       </div>
                     </div>
-                    <div className="mt-4 flex justify-end">
+                    <div className="mt-4 flex justify-end gap-2">
+                      <button
+                        onClick={() => setConfirmPause(true)}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-4 py-2 rounded-xl font-semibold border border-white/5 transition-colors"
+                        title={t('dashboardUI.btnPauseTitle')}
+                      >
+                        ⏸ {t('dashboardUI.btnPause')}
+                      </button>
                       <button
                         onClick={handleCompleteCurrentActivity}
                         className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md shadow-emerald-500/20"
@@ -1043,6 +1145,7 @@ export default function Dashboard() {
                   <div className="mt-4 flex justify-end">
                     <button
                       onClick={handleGoToNextActivity}
+                      title={t('dashboardUI.btnGoToNextTitle')}
                       className="inline-flex items-center gap-2 accent-solid-strong hover:accent-solid text-white text-xs px-4 py-2 rounded-xl font-semibold transition-colors shadow-md accent-glow-lg"
                     >
                       {t('dashboardUI.btnGoToNext')} — {nextActivity.icon} {nextActivity.name} ({nextActivity.startTime})
@@ -1271,6 +1374,81 @@ export default function Dashboard() {
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/30 transition-all hover:scale-[1.03] active:scale-[0.98]"
             >
               {t('dashboardUI.btnConfirmReset')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Pause confirmation — pause freezes effective time and pushes the rest of the
+        day forward when resumed */}
+    {confirmPause && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+        onClick={() => setConfirmPause(false)}
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl border border-white/10 bg-gradient-to-b from-slate-800/90 to-slate-900/95 shadow-2xl shadow-black/50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-6 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-lg shadow-inner shadow-indigo-500/10">⏸</div>
+              <h3 className="text-lg font-semibold text-white">{t('dashboardUI.pauseWarningTitle')}</h3>
+            </div>
+            <p className="text-sm text-slate-400 mt-4 leading-relaxed">
+              {t('dashboardUI.pauseWarningDesc')}
+            </p>
+          </div>
+          <div className="flex justify-end gap-3 px-6 pb-6 pt-2">
+            <button
+              onClick={() => setConfirmPause(false)}
+              className="px-4 py-2 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors"
+            >
+              {t('dashboardUI.btnCancel')}
+            </button>
+            <button
+              onClick={handlePause}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/30 transition-all hover:scale-[1.03] active:scale-[0.98]"
+            >
+              {t('dashboardUI.btnPause')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Resume confirmation — resuming shifts the day forward by the paused time */}
+    {confirmResume && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+        onClick={() => setConfirmResume(false)}
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl border border-white/10 bg-gradient-to-b from-slate-800/90 to-slate-900/95 shadow-2xl shadow-black/50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-6 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-lg shadow-inner shadow-emerald-500/10">▶️</div>
+              <h3 className="text-lg font-semibold text-white">{t('dashboardUI.resumeWarningTitle')}</h3>
+            </div>
+            <p className="text-sm text-slate-400 mt-4 leading-relaxed">
+              {t('dashboardUI.resumeWarningDesc')}
+            </p>
+          </div>
+          <div className="flex justify-end gap-3 px-6 pb-6 pt-2">
+            <button
+              onClick={() => setConfirmResume(false)}
+              className="px-4 py-2 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors"
+            >
+              {t('dashboardUI.btnCancel')}
+            </button>
+            <button
+              onClick={handleResume}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/30 transition-all hover:scale-[1.03] active:scale-[0.98]"
+            >
+              {t('dashboardUI.btnResume')}
             </button>
           </div>
         </div>
