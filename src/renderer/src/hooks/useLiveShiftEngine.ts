@@ -146,19 +146,30 @@ export function useLiveShiftEngine() {
   const pauseElapsedSecs = isPausedToday && pauseWallAt !== null
     ? Math.max(0, Math.floor((Date.now() - pauseWallAt) / 1000))
     : 0
-  const effectiveSecs = useMemo(() => {
-    return Math.round((timeToSeconds(timeString) + timeOffset - effShiftToday - pauseElapsedSecs + 86400) % 86400)
-  }, [timeString, timeOffset, effShiftToday, pauseElapsedSecs])
 
   // MyShift flexible breaks — per-day, so anything from a previous day is ignored.
-  // Pool minutes are broken down per scheduled break activity (flexBreakSecs), so a
-  // break is spent individually and can never take time away from another break.
+  // These have to live ABOVE effectiveSecs (which freezes during a running break)
+  // to keep the TDZ ordering straight.
   const flexOn = flexMode && flexDay === currentDateStr
   const flexActive = flexOn && flexActiveId !== null
   const flexRunning = flexOn && flexActive && flexRunningMs !== null
   const flexLiveElapsed = flexRunning && flexRunningMs !== null ? Math.max(0, Math.floor((Date.now() - flexRunningMs) / 1000)) : 0
 
-  // Seconds a given scheduled break still has of its OWN allowance.
+  const effectiveSecs = useMemo(() => {
+    // While a flexible break runs within its OWN allowance, the effective clock
+    // freezes at the moment it started — spending a flex break really pauses the
+    // working day (work/progress stop). Once the break runs past its allowance
+    // (AŞIM) the clock resumes, so the overrun counts against the schedule.
+    if (flexRunning && flexActiveId !== null && flexFrozenEff > 0) {
+      const own = flexBreakSecs[flexActiveId] ?? 0
+      const rem = own - (flexUsedBy[flexActiveId] ?? 0) - flexLiveElapsed
+      if (rem > 0) return flexFrozenEff
+    }
+    return Math.round((timeToSeconds(timeString) + timeOffset - effShiftToday - pauseElapsedSecs + 86400) % 86400)
+  }, [timeString, timeOffset, effShiftToday, pauseElapsedSecs, flexRunning, flexActiveId, flexFrozenEff, flexBreakSecs, flexUsedBy, flexLiveElapsed])
+
+  // Pool minutes are broken down per scheduled break activity (flexBreakSecs), so a
+  // break is spent individually and can never take time away from another break.
   const flexRemainingOf = (id: string): number => {
     if (!flexOn) return 0
     const own = flexBreakSecs[id] ?? 0

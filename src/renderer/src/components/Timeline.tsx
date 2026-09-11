@@ -249,12 +249,13 @@ export default function Timeline() {
                 {/* Flexible-break interaction — scheduled "Mola mı?" chips become the
                     spendable pool. The running break shows its live remaining time (and
                     AŞIM once its allowance runs out). Controls stack under the remaining
-                    chip so rows stay narrow. Ending a break only consumes the minutes
-                    actually used — the rest stay available for another round; a break
-                    is locked only once its own allowance is fully spent. */}
+                    chip so rows stay narrow; fixed chip width + a reserved button slot
+                    keep the list from shifting as the countdown ticks. Ending a break
+                    only consumes the minutes actually used — the rest stay available
+                    for another round; a break is locked only once fully spent. */}
                 {flexMode && act.isBreak && (
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded whitespace-nowrap ${
+                    <span className={`h-5 min-w-[4.5rem] px-1.5 flex items-center justify-center text-[9px] font-mono rounded whitespace-nowrap ${
                       flexRunningHere
                         ? flexOverage
                           ? 'bg-amber-500/15 text-amber-300 font-semibold animate-pulse'
@@ -271,21 +272,25 @@ export default function Timeline() {
                         ? `✔ ${t('timelineUI.flexDoneBadge')}`
                         : `${formatRemaining(flexRem)} ${t('timelineUI.flexLeft')}`}
                     </span>
-                    {flexRunningHere ? (
-                      <button
-                        onClick={flexStopBreak}
-                        className="flex-shrink-0 px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-slate-200 font-semibold transition-colors whitespace-nowrap"
-                      >
-                        ⏹ {t('timelineUI.flexEndBreak')}
-                      </button>
-                    ) : flexRem > 0 ? (
-                      <button
-                        onClick={() => flexStartBreak(act.id, Math.round(effectiveSecs))}
-                        className="flex-shrink-0 px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-semibold transition-colors shadow-md shadow-emerald-500/20"
-                      >
-                        ☕ {t('timelineUI.flexStartBreak')}
-                      </button>
-                    ) : null}
+                    <div className="h-6 flex items-center justify-end">
+                      {flexRunningHere ? (
+                        <button
+                          onClick={flexStopBreak}
+                          className="flex-shrink-0 px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-slate-200 font-semibold transition-colors whitespace-nowrap"
+                        >
+                          ⏹ {t('timelineUI.flexEndBreak')}
+                        </button>
+                      ) : flexRem > 0 ? (
+                        <button
+                          onClick={() => flexStartBreak(act.id, Math.round(effectiveSecs))}
+                          className="flex-shrink-0 px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-semibold transition-colors shadow-md shadow-emerald-500/20"
+                        >
+                          ☕ {t('timelineUI.flexStartBreak')}
+                        </button>
+                      ) : (
+                        <span className="block" aria-hidden />
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -363,15 +368,16 @@ export default function Timeline() {
           </div>
         </div>
 
-        {/* Floating scroll-to-first button — only appears once the list is scrolled */}
+        {/* Floating scroll-to-first button — only appears once the list is scrolled.
+            Kept small (icon only) so it stays inside the pr-8 gutter and never
+            overlaps the row's controls on the right. */}
         {scrolled && (
           <button
             onClick={scrollToFirst}
-            className="absolute top-0 right-0 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-[10px] text-slate-300 font-medium transition-colors shadow-lg backdrop-blur"
+            className="absolute top-0 right-0 z-10 flex items-center justify-center w-6 h-6 rounded-md bg-slate-800/90 hover:bg-slate-700 border border-white/10 text-[11px] text-slate-300 font-medium transition-colors shadow-lg backdrop-blur"
             title="İlk Aktiviteye Dön"
           >
-            <span className="text-[11px] leading-none">⤒</span>
-            <span className="hidden sm:inline">Başa Dön</span>
+            <span className="leading-none">⤒</span>
           </button>
         )}
       </div>

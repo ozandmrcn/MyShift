@@ -963,14 +963,23 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   // Each scheduled "Mola mı?" activity gets its own allowance (`byId`), so the user
   // spends breaks individually and a break can never take time away from another one.
   enableFlex: (totalPoolSecs, byId) => {
+    const s = get()
+    const day = todayStr()
+    // Re-enabling flex mode for the SAME day keeps what was already spent — only
+    // a fresh day (or the very first enable) starts the pool from zero. Switching
+    // to the plan and back must not wipe the used minutes.
+    const keepUsage = s.flexDay === day && s.flexTotalSecs > 0
+    const pool = Math.max(0, Math.round(totalPoolSecs))
     set({
       flexMode: true,
-      flexTotalSecs: Math.max(0, Math.round(totalPoolSecs)),
-      flexUsedSecs: 0,
+      flexTotalSecs: pool,
+      flexUsedSecs: keepUsage ? Math.min(pool, s.flexUsedSecs) : 0,
       flexBreakSecs: byId ?? {},
-      flexUsedBy: {},
+      flexUsedBy: keepUsage && byId
+        ? Object.fromEntries(Object.entries(s.flexUsedBy).filter(([k]) => k in byId))
+        : {},
       flexActiveId: null,
-      flexDay: todayStr(),
+      flexDay: day,
       flexRunningMs: null,
       flexFrozenEff: 0
     })
