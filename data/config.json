@@ -53,6 +53,12 @@
 				"paybackSeconds": 0,
 				"cursorIdle": 0,
 				"cursorPayback": 0
+			},
+			"05:00": {
+				"idleSeconds": 0,
+				"paybackSeconds": 0,
+				"cursorIdle": 0,
+				"cursorPayback": 0
 			}
 		},
 		"confirmedActivities": []
@@ -72,7 +78,14 @@
 			"breakSeconds": 0,
 			"breakCount": 0,
 			"completed": false,
-			"mode": "myshift"
+			"mode": "myshift",
+			"detail": {
+				"breakLog": [],
+				"idleLog": [],
+				"paybackLog": [],
+				"confirmedActivities": []
+			},
+			"updatedAt": 1789092569358
 		}
 	}
 }

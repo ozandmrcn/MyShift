@@ -114,6 +114,22 @@ export interface DayLog {
   breakCount: number // how many breaks were started
   completed: boolean
   mode?: 'myshift' | 'pay' | 'chrono' // which mode was active for this day
+  updatedAt?: number // last local change (ms) — cloud sync "newer wins" per day
+  detail?: DayLogDetail // rich per-day snapshot kept for cloud/calendar review
+}
+
+// Extra per-day information captured at sync/close: what happened through the day
+// (break sessions, aşım/payback sessions, confirmed moves) and how it was planned,
+// so a day can be reviewed like a calendar entry in the cloud.
+export interface DayLogDetail {
+  templateId?: string
+  templateName?: string
+  breakLog: BreakLogEntry[]
+  idleLog: TimeSpanLog[]
+  paybackLog: TimeSpanLog[]
+  confirmedActivities: string[]
+  flexUsedSecs?: number
+  flexRemainingSecs?: number
 }
 
 // A finished pay-mode break — the detailed "Bugünün Özeti" log. `overBudget`
@@ -279,6 +295,11 @@ interface ShiftStore {
   updateDayLog: (dateStr: string, log: Partial<DayLog>) => void
   deleteDayLog: (dateStr: string) => void
   updateAppUsage: (snapshot: AppUsageSnapshot) => void
+  // Cloud sync imports — the cloudSync module pushes/pulls through these so every
+  // write still goes through the normal persist path (electron-store / localStorage).
+  cloudImportMeta: (meta: { settings: Settings; templates: ShiftTemplate[]; completedShifts: string[] }) => void
+  cloudImportDay: (dateStr: string, log: DayLog) => void
+  cloudImportDays: (days: Record<string, DayLog>) => void
   factoryReset: () => Promise<void>
   flushState: () => void
 }
@@ -1316,7 +1337,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
 
     // Start today's DayLog fresh. Do NOT un-complete the day — clearing today's
     // counters should not re-open the shift and trigger aşım.
-    const freshLog: DayLog = { workedSeconds: 0, idleSeconds: 0, paybackSeconds: 0, breakSeconds: 0, breakCount: 0, completed: false }
+    const freshLog: DayLog = { workedSeconds: 0, idleSeconds: 0, paybackSeconds: 0, breakSeconds: 0, breakCount: 0, completed: false, updatedAt: Date.now() }
     const newLogs = { ...get().dailyLogs, [day]: freshLog }
     set({ dailyLogs: newLogs })
     const api = window.electronAPI
@@ -1363,7 +1384,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   updateDayLog: (dateStr, log) => {
     const { dailyLogs } = get()
     const current = dailyLogs[dateStr] || { workedSeconds: 0, idleSeconds: 0, paybackSeconds: 0, breakSeconds: 0, breakCount: 0, completed: false }
-    const updated = { ...current, ...log }
+    const updated = { ...current, ...log, updatedAt: Date.now() }
     const newLogs = { ...dailyLogs, [dateStr]: updated }
     set({ dailyLogs: newLogs })
 
@@ -1392,6 +1413,48 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
 
   updateAppUsage: (snapshot) => {
     set({ appUsage: snapshot })
+  },
+
+  cloudImportMeta: (meta) => {
+    set({ settings: meta.settings, templates: meta.templates, completedShifts: meta.completedShifts })
+    const api = window.electronAPI
+    if (api?.store) {
+      void api.store.set('settings', meta.settings)
+      void api.store.set('templates', meta.templates)
+      void api.store.set('completedShifts', meta.completedShifts)
+    } else {
+      localStorage.setItem('settings', JSON.stringify(meta.settings))
+      localStorage.setItem('templates', JSON.stringify(meta.templates))
+      localStorage.setItem('completedShifts', JSON.stringify(meta.completedShifts))
+    }
+  },
+
+  cloudImportDay: (dateStr, log) => {
+    const { dailyLogs } = get()
+    const updated = { ...(dailyLogs[dateStr] ?? {}), ...log, updatedAt: log.updatedAt ?? Date.now() }
+    const newLogs = { ...dailyLogs, [dateStr]: updated }
+    set({ dailyLogs: newLogs })
+    const api = window.electronAPI
+    if (api?.store) {
+      api.store.set('dailyLogs', newLogs)
+    } else {
+      localStorage.setItem('dailyLogs', JSON.stringify(newLogs))
+    }
+  },
+
+  cloudImportDays: (days) => {
+    const { dailyLogs } = get()
+    const newLogs = { ...dailyLogs }
+    for (const [date, log] of Object.entries(days)) {
+      newLogs[date] = { ...(newLogs[date] ?? {}), ...log, updatedAt: log.updatedAt ?? Date.now() }
+    }
+    set({ dailyLogs: newLogs })
+    const api = window.electronAPI
+    if (api?.store) {
+      api.store.set('dailyLogs', newLogs)
+    } else {
+      localStorage.setItem('dailyLogs', JSON.stringify(newLogs))
+    }
   },
 
   factoryReset: async () => {

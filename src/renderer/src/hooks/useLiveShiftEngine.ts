@@ -71,6 +71,9 @@ export function useLiveShiftEngine() {
   const settings = useShiftStore((state) => state.settings)
   const completedShifts = useShiftStore((state) => state.completedShifts)
   const confirmedActivities = useShiftStore((state) => state.confirmedActivities)
+  const breakLog = useShiftStore((state) => state.breakLog)
+  const idleLog = useShiftStore((state) => state.idleLog)
+  const paybackLog = useShiftStore((state) => state.paybackLog)
   const timeOffset = useShiftStore((state) => state.timeOffset)
   const setTimeOffset = useShiftStore((state) => state.setTimeOffset)
   const dayShiftSecs = useShiftStore((state) => state.dayShiftSecs)
@@ -826,7 +829,26 @@ export function useLiveShiftEngine() {
     const nowMs = Date.now()
     if (nowMs - lastDayLogWrite.current < 60000) return
     lastDayLogWrite.current = nowMs
-    updateDayLog(currentDateStr, { workedSeconds, idleSeconds: idleLogSeconds, paybackSeconds, breakSeconds, breakCount, mode: settings.mode })
+    updateDayLog(currentDateStr, {
+      workedSeconds,
+      idleSeconds: idleLogSeconds,
+      paybackSeconds,
+      breakSeconds,
+      breakCount,
+      mode: settings.mode,
+      // Rich per-day snapshot — lets the user review a whole day like a calendar
+      // entry from the cloud, not just the second totals.
+      detail: {
+        templateId: resolvedTemplate?.id,
+        templateName: resolvedTemplate?.name,
+        breakLog,
+        idleLog,
+        paybackLog,
+        confirmedActivities,
+        flexUsedSecs: flexOn ? flexUsedLiveSecs : undefined,
+        flexRemainingSecs: flexOn ? flexRemainingSecs : undefined
+      }
+    })
 
     const hh = new Date(nowMs).getHours().toString().padStart(2, '0')
     const hourKey = `${hh}:00`
@@ -841,7 +863,7 @@ export function useLiveShiftEngine() {
       cursorIdle: baseIdle,
       cursorPayback: basePb
     })
-  }, [currentDateStr, workedSeconds, idleLogSeconds, paybackSeconds, breakSeconds, breakCount, updateDayLog, idleLogMs, idleStartTs, paybackAccumMs, paybackStartTs, todayHourly, setTodayHourly, settings.mode])
+  }, [currentDateStr, workedSeconds, idleLogSeconds, paybackSeconds, breakSeconds, breakCount, updateDayLog, idleLogMs, idleStartTs, paybackAccumMs, paybackStartTs, todayHourly, setTodayHourly, settings.mode, resolvedTemplate, breakLog, idleLog, paybackLog, confirmedActivities, flexOn, flexUsedLiveSecs, flexRemainingSecs])
 
   // Push live status to the tray tooltip (refreshed ~once per second via timeString)
   useEffect(() => {

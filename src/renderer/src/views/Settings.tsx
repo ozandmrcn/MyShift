@@ -3,6 +3,7 @@ import { useShiftStore } from '../stores/useShiftStore'
 import type { Settings } from '../stores/useShiftStore'
 import { playSound, playReminderSound } from '../utils/soundEffects'
 import { useT } from '../i18n/useT'
+import { useCloudSync } from '../hooks/useCloudSync'
 
 const THEMES_SWATCHES: Record<string, string> = {
   light: 'conic-gradient(#ffffff 0 25%, #e2e8f0 0 50%, #94a3b8 0 75%, #475569 0 100%)',
@@ -90,7 +91,10 @@ function Row({ icon, title, description, right }: { icon: string; title: string;
 export default function SettingsView() {
   const { settings, updateSettings, clearHistory, factoryReset, dayShiftSecs, shiftDay, myshiftPaused, setDayShift, resumeDay } = useShiftStore()
   const { t, language } = useT()
+  const cloud = useCloudSync()
   const api = window.electronAPI
+
+  const fmtClock = (ms: number) => new Date(ms).toTimeString().slice(0, 8)
 
   const MONTH_NAMES = language === 'tr' ? MONTH_NAMES_TR : MONTH_NAMES_EN
   const THEMES = useMemo(() => THEME_KEYS.map(k => ({ key: k, label: t(THEME_LABEL_KEY[k] as any), swatch: THEMES_SWATCHES[k] })), [language])
@@ -329,6 +333,87 @@ export default function SettingsView() {
               )
             }
           />
+        </Section>
+
+        {/* Bulut (opsiyonel Firebase senkronu) */}
+        <Section
+          icon="☁️"
+          title={t('settingsView.cloudTitle')}
+          description={t('settingsView.cloudDesc')}
+        >
+          {!cloud.enabled ? (
+            <Row
+              icon="🚫"
+              title={t('settingsView.cloudDisabled')}
+              description={t('settingsView.cloudDisabledDesc')}
+              right={
+                <span className="text-[10px] px-2 py-1 rounded-md bg-white/5 border border-white/10 text-slate-500 flex-shrink-0">
+                  {t('settingsView.cloudNotConfigured')}
+                </span>
+              }
+            />
+          ) : !cloud.user ? (
+            <Row
+              icon="👤"
+              title={t('settingsView.cloudSignedOut')}
+              description={cloud.status === 'signing-in' ? t('settingsView.cloudSigningIn') : t('settingsView.cloudSignInDesc')}
+              right={
+                <button
+                  onClick={cloud.signIn}
+                  disabled={cloud.status === 'signing-in'}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex-shrink-0 ${
+                    cloud.status === 'signing-in'
+                      ? 'bg-white/5 border border-white/10 text-slate-500 cursor-not-allowed'
+                      : 'bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-md shadow-sky-500/20'
+                  }`}
+                >
+                  {cloud.status === 'signing-in' ? t('settingsView.cloudSigningIn') : t('settingsView.cloudSignInBtn')}
+                </button>
+              }
+            />
+          ) : (
+            <>
+              <Row
+                icon="✅"
+                title={t('settingsView.cloudSignedInAs')}
+                description={`${cloud.user.displayName ? `${cloud.user.displayName} ` : ''}${cloud.user.email ?? ''}`.trim()}
+                right={
+                  <button
+                    onClick={cloud.signOut}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 border border-white/10 text-slate-200 hover:bg-white/10 transition-colors flex-shrink-0"
+                  >
+                    {t('settingsView.cloudSignOutBtn')}
+                  </button>
+                }
+              />
+              <Row
+                icon="🔄"
+                title={t('settingsView.cloudSyncStatus')}
+                description={
+                  cloud.status === 'syncing'
+                    ? t('settingsView.cloudSyncing')
+                    : cloud.status === 'error'
+                      ? `${t('settingsView.cloudError')}: ${cloud.error}`
+                      : cloud.lastSyncAt
+                        ? `${t('settingsView.cloudSyncedAt')}: ${fmtClock(cloud.lastSyncAt)}`
+                        : t('settingsView.cloudNotSyncedYet')
+                }
+                right={
+                  <button
+                    onClick={cloud.syncNow}
+                    disabled={cloud.status === 'syncing'}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex-shrink-0 ${
+                      cloud.status === 'syncing'
+                        ? 'bg-white/5 border border-white/10 text-slate-500 cursor-not-allowed'
+                        : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20'
+                    }`}
+                  >
+                    {t('settingsView.cloudSyncNowBtn')}
+                  </button>
+                }
+              />
+            </>
+          )}
         </Section>
 
         {/* Debug modu */}
