@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { isFirebaseEnabled, onAuthChange, signInWithGoogle, signOutUser, type CloudUser } from '../firebase/firebase'
 import { pushMeta, readMeta, pushDays, readAllDays, type CloudMeta } from '../firebase/cloudSync'
 import { useShiftStore, type DayLog } from '../stores/useShiftStore'
+import { logCloudError, logCloudInfo, extractError } from '../utils/cloudLog'
 
 export type CloudStatus =
   | 'disabled' // no .env config → feature off, app fully local
@@ -13,6 +14,13 @@ export type CloudStatus =
 
 interface CloudMetaSyncStamp {
   at: number
+}
+
+// Format Firebase errors human-readably: "firestore/permission-denied — <message>".
+function formatError(err: unknown): string {
+  const { code, message } = extractError(err)
+  const msg = (message && !message.includes(code ?? '') ? message : code) ?? ''
+  return code && !msg.includes(code) ? `${code} — ${msg}` : msg
 }
 
 // Where the last cloud meta sync time lives (electron-store in Electron, localStorage there).
@@ -43,7 +51,7 @@ async function writeLastMetaSync(at: number): Promise<void> {
 /** Wires Firebase (optional) to the local store:
  *  - listens to auth, exposes sign in/out
  *  - on login: pull + merge (newer wins per document via updatedAt)
- *  - on any local change: debounced push of meta + day docs
+ *  - on any local change: debounced push of meta + the days that actually changed
  */
 export function useCloudSync() {
   const [status, setStatus] = useState<CloudStatus>(isFirebaseEnabled ? 'signed-out' : 'disabled')
@@ -52,6 +60,8 @@ export function useCloudSync() {
   const [error, setError] = useState<string | null>(null)
   const uidRef = useRef<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // date -> last updatedAt we know is safely stored in the cloud (dirty tracking).
+  const pushedRef = useRef<Record<string, number>>({})
 
   const syncNow = useCallback(async (force = false) => {
     const uid = uidRef.current
@@ -77,7 +87,7 @@ export function useCloudSync() {
           completedShifts: cloudMeta.completedShifts
         })
         await writeLastMetaSync(cloudMeta.updatedAt)
-        void pushMeta(uid, { ...cloudMeta, updatedAt: Date.now() })
+        await pushMeta(uid, { ...cloudMeta, updatedAt: Date.now() })
       } else {
         // Local is newer (or no cloud meta) -> push local.
         await pushMeta(uid, localMeta)
@@ -100,11 +110,16 @@ export function useCloudSync() {
       if (Object.keys(toImport).length > 0) store.cloudImportDays(toImport)
       if (Object.keys(toPush).length > 0) await pushDays(uid, toPush)
 
+      // After a full sync, local == cloud everywhere → nothing left to push.
+      const fresh = useShiftStore.getState().dailyLogs
+      for (const date of Object.keys(fresh)) pushedRef.current[date] = fresh[date].updatedAt ?? Date.now()
+
       setLastSyncAt(Date.now())
       setStatus('synced')
+      logCloudInfo('sync-complete', { uid, force, imported: Object.keys(toImport).length, pushed: Object.keys(toPush).length })
     } catch (err) {
-      console.error('[cloud] sync failed', err)
-      setError(err instanceof Error ? err.message : String(err))
+      logCloudError('sync-failed', err, { uid, force })
+      setError(formatError(err))
       setStatus('error')
     }
   }, [])
@@ -119,7 +134,11 @@ export function useCloudSync() {
       if (fbUser) {
         uidRef.current = fbUser.uid
         setUser({ uid: fbUser.uid, displayName: fbUser.displayName ?? undefined, email: fbUser.email ?? undefined, photoURL: fbUser.photoURL ?? undefined })
-        void syncNow(true)
+        logCloudInfo('signed-in', { uid: fbUser.uid, email: fbUser.email })
+        // force=false: adopt the cloud meta whenever it's newer than what we last
+        // saw (critical after a factory reset — otherwise the cleared local state
+        // would overwrite the cloud backup). Days still merge newer-wins per day.
+        void syncNow(false)
       } else {
         uidRef.current = null
         setUser(null)
@@ -129,7 +148,7 @@ export function useCloudSync() {
     return off
   }, [syncNow])
 
-  // Push local changes (debounced) while signed in
+  // Push local changes (debounced) while signed in — only days that changed.
   useEffect(() => {
     if (!isFirebaseEnabled) return
     const unsub = useShiftStore.subscribe((state, prev) => {
@@ -145,18 +164,24 @@ export function useCloudSync() {
         const uid = uidRef.current
         if (!uid) return
         const store = useShiftStore.getState()
+        const dirtyDays: Record<string, DayLog> = {}
+        for (const [date, log] of Object.entries(store.dailyLogs)) {
+          if ((log.updatedAt ?? 0) !== pushedRef.current[date]) dirtyDays[date] = log
+        }
         setStatus('syncing')
         Promise.all([
           pushMeta(uid, { settings: store.settings, templates: store.templates, completedShifts: store.completedShifts, updatedAt: Date.now() } as CloudMeta),
-          pushDays(uid, store.dailyLogs)
+          pushDays(uid, dirtyDays)
         ])
           .then(() => {
+            for (const [date, log] of Object.entries(dirtyDays)) pushedRef.current[date] = log.updatedAt ?? Date.now()
             setLastSyncAt(Date.now())
             setStatus('synced')
+            logCloudInfo('push-complete', { uid, days: Object.keys(dirtyDays).length })
           })
           .catch((err) => {
-            console.error('[cloud] push failed', err)
-            setError(err instanceof Error ? err.message : String(err))
+            logCloudError('push-failed', err, { uid, days: Object.keys(dirtyDays).length })
+            setError(formatError(err))
             setStatus('error')
           })
       }, 2000)
@@ -174,18 +199,20 @@ export function useCloudSync() {
       await signInWithGoogle()
       // status/user follow from the auth listener
     } catch (err) {
-      console.error('[cloud] sign-in failed', err)
-      setError(err instanceof Error ? err.message : String(err))
+      logCloudError('sign-in-failed', err, {})
+      setError(formatError(err))
       setStatus('error')
     }
   }, [])
 
   const signOut = useCallback(async () => {
+    const uid = uidRef.current
     await signOutUser()
     uidRef.current = null
     setUser(null)
     setStatus('signed-out')
     setLastSyncAt(null)
+    logCloudInfo('signed-out', { uid })
   }, [])
 
   const enabled = isFirebaseEnabled

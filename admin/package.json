@@ -1,0 +1,19 @@
+{
+  "name": "myshift-admin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MyShift admin panel — local-only web UI over the entire Firestore (no login; credentials come from the shared root .env)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "admin": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "firebase-admin": "^12.4.0"
+  }
+}

@@ -49,7 +49,9 @@ export function getAuthRef(): Auth | null {
 
 /** Prompts the Google account chooser and signs the user in (popup). */
 export async function signInWithGoogle(): Promise<User | null> {
-  if (!auth) return null
+  if (!auth) {
+    throw new Error('Firebase ayarlanamadı — bulut devre dışı')
+  }
   try {
     const provider = new GoogleAuthProvider()
     provider.setCustomParameters({ prompt: 'select_account' })

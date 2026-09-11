@@ -414,6 +414,14 @@ export default function SettingsView() {
               />
             </>
           )}
+          {cloud.error && (
+            <p className="px-4 py-2 text-[11px] text-red-400 border-t border-white/5 bg-red-500/5 whitespace-pre-wrap break-words">
+              ⚠️ {t('settingsView.cloudError')}: {cloud.error}
+            </p>
+          )}
+          {cloud.error && (
+            <p className="px-4 pb-2 text-[10px] text-slate-500 border-b border-white/5">🔎 {t('settingsView.cloudLogHint')}</p>
+          )}
         </Section>
 
         {/* Debug modu */}

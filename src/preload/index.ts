@@ -61,6 +61,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('data:imported', listener)
     }
   },
+  cloud: {
+    logError: (payload: any) => ipcRenderer.invoke('cloud:log-error', payload),
+    logInfo: (payload: any) => ipcRenderer.invoke('cloud:log-info', payload)
+  },
   onFlushState: (callback: () => void) => {
     const listener = () => callback()
     ipcRenderer.on('flush-state', listener)

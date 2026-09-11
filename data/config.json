@@ -59,6 +59,24 @@
 				"paybackSeconds": 0,
 				"cursorIdle": 0,
 				"cursorPayback": 0
+			},
+			"11:00": {
+				"idleSeconds": 0,
+				"paybackSeconds": 0,
+				"cursorIdle": 0,
+				"cursorPayback": 0
+			},
+			"12:00": {
+				"idleSeconds": 0,
+				"paybackSeconds": 0,
+				"cursorIdle": 0,
+				"cursorPayback": 0
+			},
+			"16:00": {
+				"idleSeconds": 0,
+				"paybackSeconds": 0,
+				"cursorIdle": 0,
+				"cursorPayback": 0
 			}
 		},
 		"confirmedActivities": []
@@ -83,9 +101,11 @@
 				"breakLog": [],
 				"idleLog": [],
 				"paybackLog": [],
-				"confirmedActivities": []
+				"confirmedActivities": [],
+				"flexUsedSecs": 0,
+				"flexRemainingSecs": 0
 			},
-			"updatedAt": 1789092569358
+			"updatedAt": 1789133115313
 		}
 	}
 }

@@ -845,8 +845,8 @@ export function useLiveShiftEngine() {
         idleLog,
         paybackLog,
         confirmedActivities,
-        flexUsedSecs: flexOn ? flexUsedLiveSecs : undefined,
-        flexRemainingSecs: flexOn ? flexRemainingSecs : undefined
+        flexUsedSecs: flexUsedLiveSecs,
+        flexRemainingSecs: flexRemainingSecs
       }
     })
 

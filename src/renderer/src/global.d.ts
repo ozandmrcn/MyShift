@@ -47,6 +47,10 @@ export interface IElectronAPI {
     clearAll: () => Promise<{ ok: boolean; error?: string }>
     onImported?: (callback: () => void) => () => void
   }
+  cloud: {
+    logError: (payload: unknown) => Promise<boolean>
+    logInfo: (payload: unknown) => Promise<boolean>
+  }
   onFlushState: (callback: () => void) => () => void
 }
 

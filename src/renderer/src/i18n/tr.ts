@@ -255,6 +255,7 @@ const tr = {
     cloudSyncedAt: 'Son senkron',
     cloudError: 'Senkron hatası',
     cloudNotSyncedYet: 'Henüz senkronlanmadı',
+    cloudLogHint: 'Ayrıntılar \\data\\cloud-sync.log dosyasına kaydedildi.',
     appearanceHint: 'Genel temayı seçin — uygulamanın tamamı (arka plan, kartlar, yazılar) bu renge bürünür.',
     themeLight: 'Açık (Beyaz)',
     themeDark: 'Koyu (Sistem)',

@@ -28,6 +28,11 @@ pnpm-debug.log*
 .env.*.local
 !.env.example
 
+# Secrets — NEVER commit service account keys
+*.serviceAccountKey.json
+serviceAccountKey*.json
+firebase-service-account*.json
+
 # OS files
 .DS_Store
 Thumbs.db

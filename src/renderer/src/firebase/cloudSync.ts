@@ -28,13 +28,31 @@ function daysColl(uid: string) {
   return collection(db!, 'users', uid, 'days')
 }
 
+/** Firestore rejects `undefined` anywhere in a written document. Legacy or
+ *  optional fields (e.g. `detail.flexUsedSecs` from before flex existed) can be
+ *  undefined, so scrub them recursively before any write. Never throws. */
+export function sanitizeForFirestore<T>(value: T): T {
+  if (value === undefined || value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (item === undefined ? undefined : sanitizeForFirestore(item)))
+      .filter((item) => item !== undefined) as unknown as T
+  }
+  const out: Record<string, unknown> = {}
+  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    if (v === undefined) continue
+    out[key] = sanitizeForFirestore(v)
+  }
+  return out as T
+}
+
 export function isReady(uid: string): boolean {
   return getDb() !== null && uid.length > 0
 }
 
 export async function pushMeta(uid: string, meta: CloudMeta): Promise<void> {
   if (!isReady(uid)) return
-  await setDoc(metaRef(uid), meta)
+  await setDoc(metaRef(uid), sanitizeForFirestore(meta))
 }
 
 export async function readMeta(uid: string): Promise<CloudMeta | null> {
@@ -44,15 +62,20 @@ export async function readMeta(uid: string): Promise<CloudMeta | null> {
   return snap.data() as CloudMeta
 }
 
-/** Batched write of every given day doc (dates as doc ids). */
+/** Batched write of every given day doc (dates as doc ids), chunked to stay far
+ *  below Firestore's 500-writes-per-batch limit even on a huge backlog. */
 export async function pushDays(uid: string, days: Record<string, DayLog>): Promise<void> {
   if (!isReady(uid) || Object.keys(days).length === 0) return
   const db = getDb()!
-  const batch = writeBatch(db)
-  for (const [date, log] of Object.entries(days)) {
-    batch.set(dayRef(uid, date), { ...log, updatedAt: log.updatedAt ?? Date.now() })
+  const entries = Object.entries(days)
+  for (let i = 0; i < entries.length; i += 400) {
+    const chunk = entries.slice(i, i + 400)
+    const batch = writeBatch(db)
+    for (const [date, log] of chunk) {
+      batch.set(dayRef(uid, date), sanitizeForFirestore({ ...log, updatedAt: log.updatedAt ?? Date.now() }))
+    }
+    await batch.commit()
   }
-  await batch.commit()
 }
 
 export async function readDay(uid: string, date: string): Promise<DayLog | null> {

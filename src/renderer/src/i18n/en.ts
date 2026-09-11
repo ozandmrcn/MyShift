@@ -236,6 +236,7 @@ const en: TranslationKeys = {
     cloudSyncedAt: 'Last sync',
     cloudError: 'Sync error',
     cloudNotSyncedYet: 'Not synced yet',
+    cloudLogHint: 'Details were saved to \\data\\cloud-sync.log.',
     pauseState: 'Pause',
     pauseNone: 'Not active',
     pausedLabel: 'Shift is paused',

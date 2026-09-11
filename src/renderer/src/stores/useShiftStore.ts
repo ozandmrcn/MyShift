@@ -1458,6 +1458,12 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   },
 
   factoryReset: async () => {
+    // Sign out of Firebase FIRST so the cleared (empty) local state is never
+    // pushed to the cloud and the cloud copy isn't pulled back on next launch.
+    try {
+      const { signOutUser, isFirebaseEnabled } = await import('../firebase/firebase')
+      if (isFirebaseEnabled) await signOutUser()
+    } catch { /* reset must proceed even if cloud fails */ }
     const api = window.electronAPI
     if (api?.data?.clearAll) {
       await api.data.clearAll()

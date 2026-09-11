@@ -1,6 +1,7 @@
 import { app, session, BrowserWindow, ipcMain, Tray, Menu, Notification, dialog } from 'electron'
-import { join } from 'path'
+import { join, normalize, extname } from 'path'
 import { execFile } from 'child_process'
+import { createServer, Server } from 'http'
 import Store from 'electron-store'
 import { startAppTracker, AppUsageSnapshot } from './appTracker'
 import { generateAiComment, AiCommentConfig, testAiConnection, getOpenRouterModels, extractMeaningfulTyped } from './aiComment'
@@ -8,7 +9,7 @@ import { AiCommentRequest, AiCommentResult } from '../shared/aiTypes'
 import { startSurveillance, SurveillanceSnapshot } from './surveillanceTracker'
 import { analyzeSurveillance } from './surveillanceAnalyzer'
 import { dataDir, surveillanceDir, loadAiProfile, saveAiProfile, appendAiNote, AiProfile } from './dataStore'
-import { existsSync, copyFileSync, readFileSync, readdirSync, writeFileSync, appendFileSync, rmSync } from 'fs'
+import { existsSync, copyFileSync, readFileSync, statSync, readdirSync, writeFileSync, appendFileSync, rmSync } from 'fs'
 
 // Initialize Electron Store — all settings live in the visible data/ folder.
 // Migrate an old config.json from userData if present, so no settings are lost.
@@ -29,6 +30,74 @@ let getAppUsageSnapshot: (() => AppUsageSnapshot) | null = null
 let setAppUsagePaused: ((paused: boolean) => void) | null = null
 let stopSurveillance: (() => void) | null = null
 let getSurveillanceSnapshot: (() => SurveillanceSnapshot) | null = null
+let rendererBaseUrl = ''
+let rendererServer: Server | null = null
+
+const RENDERER_MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav'
+}
+
+// Serve the packaged renderer over a real (loopback-only) HTTP server instead of a
+// file:// URL. Firebase Auth's OAuth popup cannot round-trip through a file://
+// origin ("domain will not match the whitelisted ones" → auth/internal-error), so
+// giving the app a proper http://127.0.0.1 origin is what makes Google sign-in work
+// in the packaged app just like it does in dev.
+function startRendererServer(): Promise<string> {
+  const root = join(__dirname, '../renderer')
+  return new Promise((resolve, reject) => {
+    const server = createServer((req, res) => {
+      try {
+        let pathname = decodeURIComponent((req.url ?? '/').split('?')[0])
+        if (pathname === '/') pathname = '/index.html'
+        const norm = normalize(pathname)
+        const file = normalize(join(root, norm))
+
+        // Directory-traversal guard: the resolved path must stay inside out/renderer.
+        const within = file === root || file.startsWith(root + '\\') || file.startsWith(root + '/')
+        if (!within || !existsSync(file) || statSync(file).isDirectory()) {
+          res.writeHead(404)
+          res.end('not found')
+          return
+        }
+
+        res.setHeader('Content-Type', RENDERER_MIME[extname(file).toLowerCase()] ?? 'application/octet-stream')
+        res.setHeader('Cache-Control', 'no-store')
+        res.end(readFileSync(file))
+      } catch {
+        res.writeHead(404)
+        res.end('not found')
+      }
+    })
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address()
+      if (addr && typeof addr === 'object') {
+        // Advertise the origin as http://localhost:PORT (NOT 127.0.0.1): Firebase
+        // Auth whitelists `localhost` by default, so Google sign-in works without
+        // adding a custom "Authorized domain" in the console. IPv6-only resolution
+        // is safe because Chromium falls back to the IPv4 loopback which is bound.
+        resolve(`http://localhost:${addr.port}`)
+      } else {
+        reject(new Error('Renderer server bound without an address'))
+      }
+    })
+    rendererServer = server
+  })
+}
 
 // Windows toast notifications attribute themselves to the app via an
 // AppUserModelID (AUMID). The NSIS installer registers `com.myshift.app` through
@@ -189,10 +258,24 @@ function createWindow(): void {
     mainWindow = null
   })
 
-  // Load the local URL for development or the local file for production
+  // Allow OAuth popups (Firebase Google sign-in opens accounts.google.com via
+  // window.open) — only for https URLs, everything else is denied. This is also
+  // required because Electron's default popup handling is unpredictable across
+  // versions; an explicit allow makes the Google account chooser reliably open.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://')) {
+      return { action: 'allow' }
+    }
+    return { action: 'deny' }
+  })
+
+  // Load the local URL for development or the local renderer server for production
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  } else if (rendererBaseUrl) {
+    mainWindow.loadURL(`${rendererBaseUrl}/index.html`)
   } else {
+    // Last-resort fallback (e.g. the local server failed to start).
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
@@ -213,25 +296,50 @@ if (!gotTheLock) {
     }
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     // Set a proper AppUserModelID for Windows Native Notifications so toasts are
     // attributed to "MyShift" instead of the raw executable path (see registerAppUserModelId).
     if (process.platform === 'win32') {
       registerAppUserModelId()
     }
 
-    // Content-Security-Policy for the packaged renderer (file://). The dev server
-    // (http://) is unaffected, so HMR keeps working during development.
+    // Content-Security-Policy for the renderer (file:// fallback or the loopback
+    // http://127.0.0.1 server). The policy is ONLY injected into the app shell —
+    // external pages (the Google OAuth popup, account chooser) must load their own
+    // scripts, so their responses are left as-is. connect-src allows the Firebase
+    // endpoints (auth, identity, Firestore) that the optional cloud feature talks to.
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      const url = details.url
+      const isAppPage =
+        url.startsWith('file://') ||
+        url.startsWith('http://localhost:') ||
+        url.startsWith('http://127.0.0.1:')
+      if (!isAppPage) {
+        callback({ responseHeaders: details.responseHeaders })
+        return
+      }
       callback({
         responseHeaders: {
           ...details.responseHeaders,
           'Content-Security-Policy': [
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ws: https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.openai.com https://openrouter.ai http://127.0.0.1:11434"
+            "default-src 'self'; script-src 'self' https://apis.google.com https://accounts.google.com https://*.googleapis.com https://*.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://*.googleapis.com https://*.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ws: https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.openai.com https://openrouter.ai http://127.0.0.1:11434 https://*.googleapis.com https://*.firebaseapp.com https://accounts.google.com https://www.google.com; frame-src https://*.googleapis.com https://*.firebaseapp.com https://accounts.google.com"
           ]
         }
       })
     })
+
+    // In dev (ELECTRON_RENDERER_URL set by electron-vite) the app already has an
+    // http:// origin; in any other run we serve the built renderer over 127.0.0.1
+    // so Firebase OAuth (Google sign-in) works — it cannot round-trip through file://.
+    if (!process.env['ELECTRON_RENDERER_URL']) {
+      try {
+        rendererBaseUrl = await startRendererServer()
+        console.log(`[main] renderer served at ${rendererBaseUrl}/index.html`)
+      } catch (error) {
+        console.error('[main] renderer server failed, falling back to file://', error)
+        rendererBaseUrl = ''
+      }
+    }
 
     createWindow()
     createTray()
@@ -482,6 +590,25 @@ ipcMain.handle('surveillance:analyze', async (_event, days?: number): Promise<Ai
   return analyzeSurveillance(cfg, Number(days) || 7)
 })
 
+// 8.5 Cloud-sync diagnostics — the renderer appends structured entries to
+// data/cloud-sync.log so failures are captured even when the user can't copy the
+// short message shown in the UI. Never throws.
+function appendCloudLog(kind: 'error' | 'info', payload: unknown): void {
+  try {
+    appendFileSync(join(dataDir(), 'cloud-sync.log'), JSON.stringify({ kind, at: Date.now(), payload }) + '\n', 'utf8')
+  } catch { /* logging must never break the app */ }
+}
+
+ipcMain.handle('cloud:log-error', (_event, payload: unknown) => {
+  appendCloudLog('error', payload)
+  return true
+})
+
+ipcMain.handle('cloud:log-info', (_event, payload: unknown) => {
+  appendCloudLog('info', payload)
+  return true
+})
+
 // 9. Data export / import — bundles EVERYTHING (store, AI profile, surveillance)
 // into one JSON file the user can back up, transfer, or restore on another machine.
 export interface DataExportBundle {
@@ -631,6 +758,10 @@ ipcMain.handle('data:clearAll', async (): Promise<{ ok: boolean; error?: string 
 
 // Cleanup on quit
 app.on('will-quit', () => {
+  if (rendererServer) {
+    rendererServer.close(() => {})
+    rendererServer = null
+  }
   if (stopAppTracker) {
     stopAppTracker()
     stopAppTracker = null
