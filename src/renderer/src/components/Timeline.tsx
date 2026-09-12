@@ -178,19 +178,49 @@ export default function Timeline() {
                     🔥 {t('timelineUI.flexOverageNote')}
                   </p>
                 )}
-                {/* Per-break breakdown — which scheduled break pool has how much left,
-                    including what the plan already consumed (shared ledger). */}
+                {/* Per-break breakdown — each scheduled break's pool has how much left (incl. what
+                    the plan already consumed). These chips ARE the start/stop controls:
+                    click a break to spend it (☕), click the running one to end it (⏹). */}
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {sorted.filter(a => a.isBreak).map(a => {
                     const rem = flexRemainingMap[a.id] ?? 0
+                    const runningHere = flexActiveId === a.id && flexRunning
+                    const blocked = flexRunning && flexActiveId !== null && !runningHere
+                    const spent = rem <= 0 && !runningHere
                     return (
-                      <span key={a.id} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[9px] font-mono border ${
-                        rem <= 0 ? 'bg-slate-800/40 border-white/5 text-slate-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
-                      }`}>
+                      <button
+                        key={a.id}
+                        disabled={blocked || spent}
+                        onClick={() => (runningHere ? flexStopBreak() : flexStartBreak(a.id, Math.round(effectiveSecs)))}
+                        title={`${a.name}: ${runningHere
+                          ? flexOverage
+                            ? `🔥 ${t('timelineUI.flexOverageNote')}`
+                            : `${t('timelineUI.flexEndBreak')} — ${t('timelineUI.flexStartBreak')} ile durur`
+                          : spent
+                            ? t('timelineUI.flexDoneBadge')
+                            : `${t('timelineUI.flexStartBreak')} · ${t('timelineUI.flexLeft')} ${formatRemaining(rem, false, 'sa', 'dk', true)}`}`}
+                        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[9px] font-mono border transition-colors ${
+                          runningHere
+                            ? flexOverage
+                              ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 animate-pulse'
+                              : 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
+                            : blocked || spent
+                            ? 'bg-slate-800/40 border-white/5 text-slate-500 cursor-not-allowed'
+                            : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 cursor-pointer hover:bg-emerald-500/25 hover:border-emerald-400 active:scale-95'
+                        }`}
+                      >
                         <span>{a.icon}</span>
                         <span className="max-w-24 truncate">{a.name}</span>
-                        <span>{formatRemaining(rem, false, 'sa', 'dk', true)}</span>
-                      </span>
+                        <span className="whitespace-nowrap">
+                          {runningHere
+                            ? flexOverage
+                              ? `🔥 ${t('timelineUI.flexOvertimeBadge')}`
+                              : `⏹ ${formatRemaining(rem, false, 'sa', 'dk', true)} ${t('timelineUI.flexLeft')}`
+                            : spent
+                            ? `✔ ${t('timelineUI.flexDoneBadge')}`
+                            : `${formatRemaining(rem, false, 'sa', 'dk', true)} ${t('timelineUI.flexLeft')}`}
+                        </span>
+                      </button>
                     )
                   })}
                 </div>

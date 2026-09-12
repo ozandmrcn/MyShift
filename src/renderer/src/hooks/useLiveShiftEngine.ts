@@ -306,32 +306,37 @@ export function useLiveShiftEngine() {
     ? Object.fromEntries([...new Set([...Object.keys(flexBreakSecs), ...Object.keys(templateBreakAllowance)])].map((id) => [id, flexRemainingOf(id)]))
     : {}
 
-  // MyShift activity list. In flexible-break mode scheduled "Mola mı?" activities are
-  // pooled: each work activity's window is extended through its trailing breaks so the
-  // user "keeps working" through former break slots (breaks become free to spend).
-  // In PLANNED mode flex-session spending shortens each break's own window and slides
-  // the rest of the day earlier by the same amount ("kalan program öne kaysın").
+  // MyShift activity list. In flexible-break mode the scheduled windows stay EXACTLY
+  // the same (a break stays a 15-min row at its set time): the label "esnek" only
+  // means that break is NOT spent automatically — its slot is pooled as time you can
+  // spend whenever by pressing its chip. During a former break slot the user keeps
+  // working, so the slot is replaced by a synthetic WORK activity ("Çalışma esnek")
+  // that is never rendered — it exists so nothing counts as idle/aşım there and the
+  // shift end stays at its scheduled time. In PLANNED mode flex-session spending
+  // shortens each break's own window and slides the rest of the day earlier.
   const myShiftActList = useMemo(() => {
     if (!resolvedTemplate) return []
     const sorted = [...resolvedTemplate.activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
     if (settings.mode !== 'myshift') return sorted
     if (flexOn) {
       const out: Activity[] = []
-      for (let i = 0; i < sorted.length; i++) {
-        const act = sorted[i]
-        if (act.isBreak) continue
-        let endSecs = timeToSeconds(`${act.endTime}:00`)
-        let j = i + 1
-        while (j < sorted.length && sorted[j].isBreak) {
-          endSecs = timeToSeconds(`${sorted[j].endTime}:00`)
-          j++
+      for (const act of sorted) {
+        if (act.isBreak) {
+          out.push({
+            ...act,
+            id: `${act.id}#flex`,
+            name: locale.timelineUI.flexWorkLabel,
+            isBreak: false,
+            flexVirtual: true,
+            icon: '💼',
+            color: 'emerald',
+            notes: undefined
+          })
+          continue
         }
-        const startSecs = timeToSeconds(`${act.startTime}:00`)
-        const dur = Math.max(0, Math.round((((endSecs - startSecs) % 86400) + 86400) % 86400 / 60))
-        out.push({ ...act, endTime: secondsToHHMM(endSecs), duration: dur })
-        i = j - 1
+        out.push(act)
       }
-      return out.length > 0 ? out : sorted
+      return out
     }
     // Planned mode: shorten each break by its flex-session spending, then push every
     // following activity earlier by the accumulated shortening. `flexUsedBy` (flex
@@ -568,7 +573,7 @@ export function useLiveShiftEngine() {
 
         if (actNotStarted) {
           nextActivity = act
-          if (!act.isBreak && i > 0 && !confirmedSet.has(act.id)) {
+          if (!act.isBreak && !act.flexVirtual && i > 0 && !confirmedSet.has(act.id)) {
             pendingActivity = act
             pendingAfter = previousEnded
           }
@@ -578,7 +583,7 @@ export function useLiveShiftEngine() {
         // currentSecs is inside this activity's window.
         if (act.isBreak) {
           currentActivity = act
-        } else if (i === 0 || confirmedSet.has(act.id)) {
+        } else if (i === 0 || confirmedSet.has(act.id) || act.flexVirtual) {
           currentActivity = act
         } else {
           pendingActivity = act
@@ -692,6 +697,17 @@ export function useLiveShiftEngine() {
       chronoBreakSecs: 0
     }
   }, [resolvedTemplate, myShiftActList, flexOn, flexUsedBy, planUsedBy, flexBreakSecs, flexActiveId, effectiveSecs, completedShifts, confirmedActivities, currentDateStr, durationMode, payWorkSecs, durationTargetSecs, settings.mode, chronoMode, chronoWorkTotalMs, chronoBreakTotalMs])
+
+  // Flag the day as "schedule elapsed" once the MyShift schedule ran past its last
+  // activity WITHOUT a manual completion (aşım). A later kaydırma uses this flag to
+  // renew the break ledger — otherwise breaks would stay "tükendi" after kaydırma
+  // on a day that was never manually completed. Recomputed live every render.
+  const markScheduleElapsed = useShiftStore((state) => state.markScheduleElapsed)
+  useEffect(() => {
+    if (settings.mode !== 'myshift') return
+    const over = engineState.isOvertime || (engineState.isShiftFinished)
+    markScheduleElapsed(over)
+  }, [settings.mode, engineState.isOvertime, engineState.isShiftFinished, markScheduleElapsed])
 
   // ── Aşım (idle) stopwatch ────────────────────────────────────────────────────
   // Lives in the shared store (single source of truth) so Dashboard & Timeline
@@ -1029,9 +1045,11 @@ export function useLiveShiftEngine() {
 
     // 2. Activity Changed Notification — when the shift just started, the first
     //    activity's toast is redundant with the "Vardiya başladı" toast, so skip it.
+    //    Synthetic flex-pool work slots never toast (they just mark former break
+    //    time as working — the user sees the timeline, not a toast for it).
     if (currentActivityId !== prevActivityId && !(shiftStartedJustNow && !prevActivityId)) {
       if (currentActivity) {
-        if (currentActivity.notificationEnabled) {
+        if (currentActivity.notificationEnabled && !currentActivity.flexVirtual) {
           const mins = currentActivity.duration
           const durLabel = mins >= 60
             ? `${Math.floor(mins / 60)}${hLabel} ${mins % 60 > 0 ? `${mins % 60}${mLabel}` : ''}`.trim()

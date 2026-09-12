@@ -416,6 +416,7 @@ const tr = {
     breakModeFlex: 'Esnek Molalar',
     flexPoolLabel: 'ESNEK MOLA HAVUZU',
     flexPoolBadge: 'Bu mola havuzda — dilediğin anda tıkla & kullan',
+    flexWorkLabel: 'Çalışma (esnek mola)',
     flexDesc: 'Aşağıdaki molalar tıklanabilir: birine bas, molan başlar (havuzdan düşer); tekrar bas, kalan dakikalar saklanır.',
     flexRemaining: 'Kalan {time}',
     flexStartBreak: 'Mola Başla',

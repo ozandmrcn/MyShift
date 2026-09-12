@@ -400,6 +400,7 @@ const en: TranslationKeys = {
     breakModeFlex: 'Flexible Breaks',
     flexPoolLabel: 'FLEXIBLE BREAK POOL',
     flexPoolBadge: 'This break is pooled — click it to spend it',
+    flexWorkLabel: 'Working (flex break)',
     flexDesc: 'The breaks below are clickable: press one to start it (drains the pool); press it again to save the remaining minutes.',
     flexRemaining: '{time} left',
     flexStartBreak: 'Start Break',
