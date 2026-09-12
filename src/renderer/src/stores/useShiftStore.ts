@@ -195,7 +195,8 @@ interface ShiftStore {
   flexTotalSecs: number // initial pool (sum of scheduled break minutes)
   flexUsedSecs: number // seconds already consumed from the pool
   flexBreakSecs: Record<string, number> // per-activity allowance (activity id -> seconds)
-  flexUsedBy: Record<string, number> // per-activity consumed seconds
+  flexUsedBy: Record<string, number> // per-activity seconds consumed from FLEX sessions
+  planUsedBy: Record<string, number> // per-activity seconds consumed from PLANNED (scheduled) breaks
   flexActiveId: string | null // the scheduled break activity currently running (null = none)
   flexDay: string // "YYYY-MM-DD" the pool belongs to (daily auto-reset)
   flexRunningMs: number | null // Date.now() while a flexible break runs (null = none)
@@ -274,6 +275,7 @@ interface ShiftStore {
   disableFlex: () => void
   flexStartBreak: (breakId: string, freezeEff: number) => void
   flexStopBreak: () => void
+  syncFlexUsedFromPlan: (usedBy: Record<string, number>) => void
   updateIdle: (isIdleNow: boolean) => void
   resetIdle: () => void
   startPayback: () => void
@@ -388,6 +390,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       flexUsedSecs: s.flexUsedSecs,
       flexBreakSecs: s.flexBreakSecs,
       flexUsedBy: s.flexUsedBy,
+      planUsedBy: s.planUsedBy,
       flexActiveId: s.flexActiveId,
       flexDay: s.flexDay,
       flexRunningMs: s.flexRunningMs,
@@ -450,6 +453,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   flexUsedSecs: 0,
   flexBreakSecs: {},
   flexUsedBy: {},
+  planUsedBy: {},
   flexActiveId: null,
   flexDay: '',
   flexRunningMs: null,
@@ -540,6 +544,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           flexUsedSecs?: number
           flexBreakSecs?: Record<string, number>
           flexUsedBy?: Record<string, number>
+          planUsedBy?: Record<string, number>
           flexActiveId?: string | null
           flexDay?: string
           flexRunningMs?: number | null
@@ -607,6 +612,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           flexUsedSecs: sameDay ? savedIdle.flexUsedSecs ?? 0 : 0,
           flexBreakSecs: sameDay ? savedIdle.flexBreakSecs ?? {} : {},
           flexUsedBy: sameDay ? savedIdle.flexUsedBy ?? {} : {},
+          planUsedBy: sameDay ? savedIdle.planUsedBy ?? {} : {},
           flexActiveId: sameDay ? savedIdle.flexActiveId ?? null : null,
           flexDay: todayStr,
           flexRunningMs: sameDay ? savedIdle.flexRunningMs ?? null : null,
@@ -668,6 +674,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           flexUsedSecs: bSameDay ? idleParsed.flexUsedSecs ?? 0 : 0,
           flexBreakSecs: bSameDay ? idleParsed.flexBreakSecs ?? {} : {},
           flexUsedBy: bSameDay ? idleParsed.flexUsedBy ?? {} : {},
+          planUsedBy: bSameDay ? idleParsed.planUsedBy ?? {} : {},
           flexActiveId: bSameDay ? idleParsed.flexActiveId ?? null : null,
           flexDay: bToday,
           flexRunningMs: bSameDay ? idleParsed.flexRunningMs ?? null : null,
@@ -999,6 +1006,9 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       flexUsedBy: keepUsage && byId
         ? Object.fromEntries(Object.entries(s.flexUsedBy).filter(([k]) => k in byId))
         : {},
+      planUsedBy: byId
+        ? Object.fromEntries(Object.entries(s.planUsedBy).filter(([k]) => k in byId))
+        : s.planUsedBy,
       flexActiveId: null,
       flexDay: day,
       flexRunningMs: null,
@@ -1015,7 +1025,8 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       let usedBy = s.flexUsedBy
       if (target) {
         const own = s.flexBreakSecs[target] ?? s.flexTotalSecs
-        usedBy = { ...usedBy, [target]: Math.min(own, (usedBy[target] ?? 0) + elapsed) }
+        const cap = Math.max(0, own - (s.planUsedBy[target] ?? 0))
+        usedBy = { ...usedBy, [target]: Math.min(cap, (usedBy[target] ?? 0) + elapsed) }
       }
       const used = Object.values(usedBy).reduce((a, b) => a + b, 0)
       set({ flexMode: false, flexUsedSecs: Math.min(s.flexTotalSecs, used), flexUsedBy: usedBy, flexActiveId: null, flexRunningMs: null, flexFrozenEff: 0 })
@@ -1030,16 +1041,16 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     if (s.myshiftPaused) return
     const day = todayStr()
     if (s.flexDay !== day) {
-      set({ flexMode: false, flexTotalSecs: 0, flexUsedSecs: 0, flexBreakSecs: {}, flexUsedBy: {}, flexActiveId: null, flexDay: day, flexRunningMs: null, flexFrozenEff: 0 })
+      set({ flexMode: false, flexTotalSecs: 0, flexUsedSecs: 0, flexBreakSecs: {}, flexUsedBy: {}, planUsedBy: {}, flexActiveId: null, flexDay: day, flexRunningMs: null, flexFrozenEff: 0 })
       persistIdle()
       return
     }
     if (s.flexRunningMs !== null) return
     const own = s.flexBreakSecs[breakId] ?? s.flexTotalSecs
-    const usedNow = s.flexUsedBy[breakId] ?? 0
+    const usedNow = (s.flexUsedBy[breakId] ?? 0) + (s.planUsedBy[breakId] ?? 0)
     // A break may be paused and resumed later — only the minutes already spent
-    // are consumed, so a partially used break stays restorable ("kullanılan
-    // kadar biter"). Only a fully spent break is locked for the day.
+    // (flex OR planned) are consumed, so a partially used break stays restorable
+    // ("kullanılan kadar biter"). Only a fully spent break is locked for the day.
     const remaining = own - usedNow
     if (remaining <= 0) return
     set({ flexRunningMs: Date.now(), flexActiveId: breakId, flexFrozenEff: Math.max(0, Math.round(freezeEff)) })
@@ -1057,10 +1068,30 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     const elapsed = Math.max(0, Math.round((Date.now() - s.flexRunningMs) / 1000))
     const target = s.flexActiveId
     const own = s.flexBreakSecs[target] ?? s.flexTotalSecs
-    const consumed = Math.min(own, (s.flexUsedBy[target] ?? 0) + elapsed)
+    const cap = Math.max(0, own - (s.planUsedBy[target] ?? 0))
+    const consumed = Math.min(cap, (s.flexUsedBy[target] ?? 0) + elapsed)
     const usedBy = { ...s.flexUsedBy, [target]: consumed }
     const used = Object.values(usedBy).reduce((a, b) => a + b, 0)
     set({ flexUsedSecs: Math.min(s.flexTotalSecs, used), flexUsedBy: usedBy, flexActiveId: null, flexRunningMs: null, flexFrozenEff: 0 })
+    persistIdle()
+  },
+
+  syncFlexUsedFromPlan: (usedBy) => {
+    const s = get()
+    const day = todayStr()
+    if (s.flexDay !== day) return
+    const merged = { ...s.planUsedBy }
+    let changed = false
+    for (const [k, v] of Object.entries(usedBy)) {
+      const cur = merged[k] ?? 0
+      const next = Math.max(cur, Math.round(Math.max(0, v)))
+      if (next !== cur) {
+        merged[k] = next
+        changed = true
+      }
+    }
+    if (!changed) return
+    set({ planUsedBy: merged })
     persistIdle()
   },
 
@@ -1326,6 +1357,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       flexUsedSecs: 0,
       flexBreakSecs: {},
       flexUsedBy: {},
+      planUsedBy: {},
       flexActiveId: null,
       flexDay: day,
       flexRunningMs: null,

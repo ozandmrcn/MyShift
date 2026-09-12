@@ -14,6 +14,7 @@ function fmtHMS(totalSecs: number): string {
 export default function Timeline() {
   const {
     activeTemplate,
+    activityList,
     currentActivity,
     activitiesStatus,
     isShiftFinished,
@@ -30,6 +31,8 @@ export default function Timeline() {
     flexUsedSecs,
     flexRemainingSecs,
     flexRemainingMap,
+    flexUsedBy,
+    planUsedBy,
     flexActiveId,
     flexOverage,
     flexRunning,
@@ -67,7 +70,12 @@ export default function Timeline() {
   }
 
   const sorted = [...activeTemplate.activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
-  const completedCount = sorted.filter(a => (activitiesStatus[a.id] || 'future') === 'completed').length
+  // In PLANNED (Programlı) mode the engine's activity list already carries the flex
+  // adjustments: breaks whose allowance flex spent shorten (e.g. 07:30–07:45 became
+  // 07:30–07:35) and every following activity slides earlier by the same amount.
+  // Flex mode keeps the raw template (breaks stay spendable chips there).
+  const sortedDisp = mode === 'myshift' && !flexMode && activityList && activityList.length > 0 ? activityList : sorted
+  const completedCount = sortedDisp.filter(a => (activitiesStatus[a.id] || 'future') === 'completed').length
   const breakPoolSecs = sorted.filter(a => a.isBreak).reduce((sum, a) => sum + (a.duration || 0), 0) * 60
   // Per-scheduled-break allowances — each "Mola mı?" activity owns its own minutes.
   const breakPoolByBreakId: Record<string, number> = {}
@@ -82,7 +90,7 @@ export default function Timeline() {
 
   // Earliest break that hasn't fully ended yet → "next break" highlight.
   const nextBreak = !isShiftFinished
-    ? (sorted.find(a => a.isBreak && (activitiesStatus[a.id] || 'future') !== 'completed') ?? null)
+    ? (sortedDisp.find(a => a.isBreak && (activitiesStatus[a.id] || 'future') !== 'completed') ?? null)
     : null
   const nextBreakId = nextBreak?.id ?? null
 
@@ -170,6 +178,22 @@ export default function Timeline() {
                     🔥 {t('timelineUI.flexOverageNote')}
                   </p>
                 )}
+                {/* Per-break breakdown — which scheduled break pool has how much left,
+                    including what the plan already consumed (shared ledger). */}
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {sorted.filter(a => a.isBreak).map(a => {
+                    const rem = flexRemainingMap[a.id] ?? 0
+                    return (
+                      <span key={a.id} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[9px] font-mono border ${
+                        rem <= 0 ? 'bg-slate-800/40 border-white/5 text-slate-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                      }`}>
+                        <span>{a.icon}</span>
+                        <span className="max-w-24 truncate">{a.name}</span>
+                        <span>{formatRemaining(rem, false, 'sa', 'dk', true)}</span>
+                      </span>
+                    )
+                  })}
+                </div>
               </div>
             )
           })()}
@@ -179,7 +203,7 @@ export default function Timeline() {
       {/* Activity list */}
       <div className="relative flex-1 min-h-0">
         <div ref={scrollRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto flex flex-col gap-1.5 pr-8">
-          {sorted.map((act) => {
+          {sortedDisp.map((act) => {
             const status = activitiesStatus[act.id] || 'future'
             const isCurrent = status === 'active'
             const isCompleted = status === 'completed'
@@ -187,6 +211,14 @@ export default function Timeline() {
             // allowance. A break is "done" once this hits zero, not on first use.
             const flexRem = flexMode && act.isBreak ? flexRemainingMap[act.id] ?? 0 : 0
             const flexRunningHere = flexMode && act.isBreak && flexActiveId === act.id && flexRunning
+            // Planned mode: a break that flex spending shortened or the plan already
+            // consumed shows its remaining allowance — the synced ledger countdown.
+            const planBreakRem = !flexMode && act.isBreak && mode === 'myshift'
+              ? flexRemainingMap[act.id] ?? (act.duration || 0) * 60
+              : null
+            const planBreakTouched = !flexMode && act.isBreak && mode === 'myshift'
+              ? ((flexUsedBy[act.id] ?? 0) + (planUsedBy[act.id] ?? 0)) > 0
+              : false
 
             return (
               <div
@@ -245,6 +277,21 @@ export default function Timeline() {
                 }`}>
                   {act.duration}dk
                 </span>
+
+                {/* Planned-mode sync chip — flex spending shortened this break's window
+                    (07:30–07:45 → 07:30–07:35) and/or the plan already consumed some of
+                    it; the remaining shows what's still unused from the shared ledger. */}
+                {planBreakTouched && (
+                  <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap ${
+                    (planBreakRem ?? 0) <= 0
+                      ? 'bg-white/5 text-slate-500'
+                      : 'bg-sky-500/15 text-sky-300'
+                  }`}>
+                    {(planBreakRem ?? 0) <= 0
+                      ? `✔ ${t('timelineUI.flexDoneBadge')}`
+                      : `${formatRemaining(planBreakRem ?? 0)} ${t('timelineUI.flexLeft')}`}
+                  </span>
+                )}
 
                 {/* Flexible-break interaction — scheduled "Mola mı?" chips become the
                     spendable pool. The running break shows its live remaining time (and
@@ -387,10 +434,10 @@ export default function Timeline() {
         {/* Progress bar */}
         <div className="flex justify-between items-center mb-1.5">
           <span className="text-[10px] text-slate-500">
-            {completedCount}/{sorted.length} tamamlandı
+            {completedCount}/{sortedDisp.length} tamamlandı
           </span>
           <span className="text-[10px] text-slate-500 font-mono">
-            {Math.round((completedCount / sorted.length) * 100)}%
+            {Math.round((completedCount / sortedDisp.length) * 100)}%
           </span>
         </div>
         <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden mb-3">
@@ -398,7 +445,7 @@ export default function Timeline() {
             className={`h-full rounded-full transition-all duration-500 ${
               isShiftFinished ? 'bg-emerald-500' : isOvertime ? 'bg-amber-500' : 'accent-solid'
             }`}
-            style={{ width: `${(completedCount / sorted.length) * 100}%` }}
+            style={{ width: `${(completedCount / sortedDisp.length) * 100}%` }}
           />
         </div>
 

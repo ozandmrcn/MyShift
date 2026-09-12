@@ -83,11 +83,11 @@ export function useLiveShiftEngine() {
   const flexMode = useShiftStore((state) => state.flexMode)
   const flexDay = useShiftStore((state) => state.flexDay)
   const flexTotalSecs = useShiftStore((state) => state.flexTotalSecs)
-  const flexUsedSecs = useShiftStore((state) => state.flexUsedSecs)
   const flexRunningMs = useShiftStore((state) => state.flexRunningMs)
   const flexFrozenEff = useShiftStore((state) => state.flexFrozenEff)
   const flexBreakSecs = useShiftStore((state) => state.flexBreakSecs)
   const flexUsedBy = useShiftStore((state) => state.flexUsedBy)
+  const planUsedBy = useShiftStore((state) => state.planUsedBy)
   const flexActiveId = useShiftStore((state) => state.flexActiveId)
 
   const locale = settings.language === 'tr' ? tr : en
@@ -163,39 +163,19 @@ export function useLiveShiftEngine() {
     // freezes at the moment it started — spending a flex break really pauses the
     // working day (work/progress stop). Once the break runs past its allowance
     // (AŞIM) the clock resumes, so the overrun counts against the schedule.
+    // What's already spent (flex + planned) reduces the still-freezable allowance.
     if (flexRunning && flexActiveId !== null && flexFrozenEff > 0) {
       const own = flexBreakSecs[flexActiveId] ?? 0
-      const rem = own - (flexUsedBy[flexActiveId] ?? 0) - flexLiveElapsed
+      const rem = own - (flexUsedBy[flexActiveId] ?? 0) - (planUsedBy[flexActiveId] ?? 0) - flexLiveElapsed
       if (rem > 0) return flexFrozenEff
     }
     return Math.round((timeToSeconds(timeString) + timeOffset - effShiftToday - pauseElapsedSecs + 86400) % 86400)
-  }, [timeString, timeOffset, effShiftToday, pauseElapsedSecs, flexRunning, flexActiveId, flexFrozenEff, flexBreakSecs, flexUsedBy, flexLiveElapsed])
+  }, [timeString, timeOffset, effShiftToday, pauseElapsedSecs, flexRunning, flexActiveId, flexFrozenEff, flexBreakSecs, flexUsedBy, planUsedBy, flexLiveElapsed])
 
-  // Pool minutes are broken down per scheduled break activity (flexBreakSecs), so a
+  // Pool minutes are broken down per scheduled break activity (`flexBreakSecs`), so a
   // break is spent individually and can never take time away from another break.
-  const flexRemainingOf = (id: string): number => {
-    if (!flexOn) return 0
-    const own = flexBreakSecs[id] ?? 0
-    const used = flexUsedBy[id] ?? 0
-    let rem = own - used
-    if (flexRunning && flexActiveId === id) rem -= flexLiveElapsed
-    return Math.max(0, rem)
-  }
-
-  // A break that ran past its own allowance is still running but has gone into
-  // aşım (overtime) — it only ends when the user stops it by hand.
-  const flexOverage = flexOn && flexRunning && flexActiveId !== null && flexRemainingOf(flexActiveId) <= 0
-
-  // Live pool consumption: closed per-break usage + the running session, capped at
-  // the running break's OWN allowance (so it can never eat into other breaks' time).
-  const flexLiveConsumed = flexRunning && flexActiveId !== null
-    ? Math.min(Math.max(0, (flexBreakSecs[flexActiveId] ?? 0) - (flexUsedBy[flexActiveId] ?? 0)), flexLiveElapsed)
-    : 0
-  const flexUsedLiveSecs = flexOn ? Math.min(flexTotalSecs, flexUsedSecs + flexLiveConsumed) : 0
-  const flexRemainingSecs = flexOn ? Math.max(0, flexTotalSecs - flexUsedLiveSecs) : 0
-  const flexRemainingMap: Record<string, number> = flexOn
-    ? Object.fromEntries(Object.keys(flexBreakSecs).map((id) => [id, flexRemainingOf(id)]))
-    : {}
+  // `flexRemainingOf` is defined below templateBreakAllowance (both sources of the
+  // per-break allowance); the flex-mode-only uses of it move there too.
 
   // Resolve today's active shift template
   const activeTemplate = useMemo<ShiftTemplate | null>(() => {
@@ -279,30 +259,105 @@ export function useLiveShiftEngine() {
 
   const resolvedTemplate = settings.mode === 'pay' ? payTemplate : (settings.mode === 'chrono' ? null : activeTemplate)
 
+  // Per-scheduled-break allowance in seconds, derived from the active template. This
+  // is the shared ledger size: flex sessions AND planned (scheduled) breaks both draw
+  // from it, so one mode can never consume more than the day scheduled for that break.
+  const templateBreakAllowance = useMemo(() => {
+    if (settings.mode !== 'myshift' || !resolvedTemplate) return {} as Record<string, number>
+    const map: Record<string, number> = {}
+    for (const act of resolvedTemplate.activities) {
+      if (!act.isBreak) continue
+      const s = timeToSeconds(`${act.startTime}:00`)
+      const e = timeToSeconds(`${act.endTime}:00`)
+      map[act.id] = Math.max(0, ((((e - s) % 86400) + 86400) % 86400))
+    }
+    return map
+  }, [resolvedTemplate, settings.mode])
+
+  // How much of break `id` is still unused right now — flex AND planned spending draw
+  // from the same per-break allowance.
+  const flexRemainingOf = (id: string): number => {
+    const own = flexBreakSecs[id] ?? templateBreakAllowance[id] ?? 0
+    if (own <= 0) return 0
+    const used = (flexUsedBy[id] ?? 0) + (planUsedBy[id] ?? 0)
+    let rem = own - used
+    if (flexRunning && flexActiveId === id) rem -= flexLiveElapsed
+    return Math.max(0, rem)
+  }
+
+  // A break that ran past its own allowance is still running but has gone into
+  // aşım (overtime) — it only ends when the user stops it by hand.
+  const flexOverage = flexOn && flexRunning && flexActiveId !== null && flexRemainingOf(flexActiveId) <= 0
+
+  // Live running-session consumption, capped at the running break's own ALLOWANCE
+  // minus everything already spent (flex + planned) — it can never eat into other
+  // breaks' time nor re-consume a break the plan already took.
+  const flexLiveConsumed = flexRunning && flexActiveId !== null
+    ? Math.min(Math.max(0, (flexBreakSecs[flexActiveId] ?? templateBreakAllowance[flexActiveId] ?? 0) - (flexUsedBy[flexActiveId] ?? 0) - (planUsedBy[flexActiveId] ?? 0)), flexLiveElapsed)
+    : 0
+  // Live pool consumption: everything already spent from the pool (flex sessions +
+  // planned flags) plus the running session, capped at the pool total.
+  const flexPoolSpent = Object.keys(flexBreakSecs).reduce((acc, id) => acc + (flexUsedBy[id] ?? 0) + (planUsedBy[id] ?? 0), 0)
+  const flexUsedLiveSecs = flexOn ? Math.min(flexTotalSecs, flexPoolSpent + flexLiveConsumed) : 0
+  const flexRemainingSecs = flexOn ? Math.max(0, flexTotalSecs - flexUsedLiveSecs) : 0
+  // Per-break remaining — available in BOTH modes so the timeline can show how much
+  // of each scheduled break is still unused while following the plan.
+  const flexRemainingMap: Record<string, number> = settings.mode === 'myshift'
+    ? Object.fromEntries([...new Set([...Object.keys(flexBreakSecs), ...Object.keys(templateBreakAllowance)])].map((id) => [id, flexRemainingOf(id)]))
+    : {}
+
   // MyShift activity list. In flexible-break mode scheduled "Mola mı?" activities are
   // pooled: each work activity's window is extended through its trailing breaks so the
   // user "keeps working" through former break slots (breaks become free to spend).
+  // In PLANNED mode flex-session spending shortens each break's own window and slides
+  // the rest of the day earlier by the same amount ("kalan program öne kaysın").
   const myShiftActList = useMemo(() => {
     if (!resolvedTemplate) return []
     const sorted = [...resolvedTemplate.activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
-    if (!flexOn || settings.mode !== 'myshift') return sorted
-    const out: Activity[] = []
-    for (let i = 0; i < sorted.length; i++) {
-      const act = sorted[i]
-      if (act.isBreak) continue
-      let endSecs = timeToSeconds(`${act.endTime}:00`)
-      let j = i + 1
-      while (j < sorted.length && sorted[j].isBreak) {
-        endSecs = timeToSeconds(`${sorted[j].endTime}:00`)
-        j++
+    if (settings.mode !== 'myshift') return sorted
+    if (flexOn) {
+      const out: Activity[] = []
+      for (let i = 0; i < sorted.length; i++) {
+        const act = sorted[i]
+        if (act.isBreak) continue
+        let endSecs = timeToSeconds(`${act.endTime}:00`)
+        let j = i + 1
+        while (j < sorted.length && sorted[j].isBreak) {
+          endSecs = timeToSeconds(`${sorted[j].endTime}:00`)
+          j++
+        }
+        const startSecs = timeToSeconds(`${act.startTime}:00`)
+        const dur = Math.max(0, Math.round((((endSecs - startSecs) % 86400) + 86400) % 86400 / 60))
+        out.push({ ...act, endTime: secondsToHHMM(endSecs), duration: dur })
+        i = j - 1
       }
-      const startSecs = timeToSeconds(`${act.startTime}:00`)
-      const dur = Math.max(0, Math.round((((endSecs - startSecs) % 86400) + 86400) % 86400 / 60))
-      out.push({ ...act, endTime: secondsToHHMM(endSecs), duration: dur })
-      i = j - 1
+      return out.length > 0 ? out : sorted
     }
-    return out.length > 0 ? out : sorted
-  }, [resolvedTemplate, flexOn, settings.mode])
+    // Planned mode: shorten each break by its flex-session spending, then push every
+    // following activity earlier by the accumulated shortening. `flexUsedBy` (flex
+    // spending only) drives the shortening; planned spending IS the shortened window.
+    const spent = flexUsedBy
+    const hasSpent = Object.keys(spent).some((k) => (spent[k] ?? 0) > 0 && (templateBreakAllowance[k] ?? 0) > 0)
+    if (!hasSpent) return sorted
+    const out: Activity[] = []
+    let cumShift = 0
+    for (const act of sorted) {
+      const baseS = timeToSeconds(`${act.startTime}:00`)
+      const baseE = timeToSeconds(`${act.endTime}:00`)
+      const shiftedS = (((baseS - cumShift) % 86400) + 86400) % 86400
+      if (act.isBreak) {
+        const allow = templateBreakAllowance[act.id] ?? ((((baseE - baseS) % 86400) + 86400) % 86400)
+        const used = Math.max(0, Math.min(allow, spent[act.id] ?? 0))
+        const effDur = Math.max(0, allow - used)
+        out.push({ ...act, startTime: secondsToHHMM(shiftedS), endTime: secondsToHHMM((shiftedS + effDur) % 86400), duration: Math.round(effDur / 60) })
+        cumShift += used
+      } else {
+        const shiftedE = (((baseE - cumShift) % 86400) + 86400) % 86400
+        out.push({ ...act, startTime: secondsToHHMM(shiftedS), endTime: secondsToHHMM(shiftedE) })
+      }
+    }
+    return out
+  }, [resolvedTemplate, flexOn, settings.mode, flexUsedBy, templateBreakAllowance])
 
   // Duration mode: live work accumulator (single source of truth lives in the store,
   // updated by the updatePayWork effect below). Recomputes every second via `time`.
@@ -598,16 +653,16 @@ export function useLiveShiftEngine() {
     }
 
     // Flexible-break mode: template breaks are spent individually. The running break
-    // reads "active"; a break whose own allowance is fully consumed reads "completed"
-    // (it is locked for the day); the rest stay "future" so the next-break marker
-    // and the break chips keep pointing at the earliest still-usable break in order.
-    // A partially used break is NOT completed — it can be resumed later.
+    // reads "active"; a break whose own allowance is fully consumed (flex + planned)
+    // reads "completed" (it is locked for the day); the rest stay "future" so the
+    // next-break marker and the break chips keep pointing at the earliest still-usable
+    // break in order. A partially used break is NOT completed — it can be resumed later.
     if (flexOn) {
       for (const act of activities) {
         if (!act.isBreak) continue
         if (act.id === flexActiveId) {
           activitiesStatus[act.id] = 'active'
-        } else if ((flexBreakSecs[act.id] ?? act.duration * 60) - (flexUsedBy[act.id] ?? 0) <= 0) {
+        } else if ((flexBreakSecs[act.id] ?? act.duration * 60) - (flexUsedBy[act.id] ?? 0) - (planUsedBy[act.id] ?? 0) <= 0) {
           activitiesStatus[act.id] = 'completed'
         } else {
           activitiesStatus[act.id] = 'future'
@@ -636,7 +691,7 @@ export function useLiveShiftEngine() {
       chronoWorkSecs: 0,
       chronoBreakSecs: 0
     }
-  }, [resolvedTemplate, myShiftActList, flexOn, flexUsedBy, flexBreakSecs, flexActiveId, effectiveSecs, completedShifts, confirmedActivities, currentDateStr, durationMode, payWorkSecs, durationTargetSecs, settings.mode, chronoMode, chronoWorkTotalMs, chronoBreakTotalMs])
+  }, [resolvedTemplate, myShiftActList, flexOn, flexUsedBy, planUsedBy, flexBreakSecs, flexActiveId, effectiveSecs, completedShifts, confirmedActivities, currentDateStr, durationMode, payWorkSecs, durationTargetSecs, settings.mode, chronoMode, chronoWorkTotalMs, chronoBreakTotalMs])
 
   // ── Aşım (idle) stopwatch ────────────────────────────────────────────────────
   // Lives in the shared store (single source of truth) so Dashboard & Timeline
@@ -774,15 +829,17 @@ export function useLiveShiftEngine() {
         : 0
       return closed + runningInBudget
     }
-    // MyShift flexible breaks: break time IS the consumed pool (days scheduled "Mola
-    // mı?" minutes, spent at will). Otherwise: elapsed time inside planned break
-    // activities, measured against the effective schedule clock.
+    // MyShift breaks: break time IS the shared per-break ledger — flex sessions plus the
+    // planned windows that have elapsed. Following the plan consumes the shortened
+    // remaining allowance; flex spending already banked the rest.
     if (flexOn) return flexUsedLiveSecs
     const effSecs = effectiveSecs
     const sorted = [...myShiftActList].sort((a, b) => a.startTime.localeCompare(b.startTime))
     let s = 0
     for (const act of sorted) {
       if (!act.isBreak) continue
+      const spent = flexUsedBy[act.id] ?? 0
+      s += spent
       const st = timeToSeconds(`${act.startTime}:00`)
       const en = timeToSeconds(`${act.endTime}:00`)
       if (effSecs >= en) {
@@ -796,7 +853,7 @@ export function useLiveShiftEngine() {
     }
     return s
     // `time` ticks every second so a live break keeps growing on screen
-  }, [settings.mode, breakUsage, runningBreak, myShiftActList, effectiveSecs, flexOn, flexUsedLiveSecs, time, chronoBreakTotalMs])
+  }, [settings.mode, breakUsage, runningBreak, myShiftActList, effectiveSecs, flexOn, flexUsedLiveSecs, planUsedBy, flexUsedBy, time, chronoBreakTotalMs])
 
   // Live worked-time estimate — driven by the accumulator which only counts real
   // work time (breaks excluded). In Pay mode the accumulator is gated by
@@ -864,6 +921,34 @@ export function useLiveShiftEngine() {
       cursorPayback: basePb
     })
   }, [currentDateStr, workedSeconds, idleLogSeconds, paybackSeconds, breakSeconds, breakCount, updateDayLog, idleLogMs, idleStartTs, paybackAccumMs, paybackStartTs, todayHourly, setTodayHourly, settings.mode, resolvedTemplate, breakLog, idleLog, paybackLog, confirmedActivities, flexOn, flexUsedLiveSecs, flexRemainingSecs])
+
+  // Planned-mode breaks feed the shared ledger: as the effective clock passes through
+  // each (possibly flex-shortened) scheduled break window, that consumption is written
+  // into planUsedBy so a later switch to flex mode sees exactly what the plan already
+  // used. Flex mode merges break windows away, so it never writes here.
+  const syncFlexUsedFromPlan = useShiftStore((state) => state.syncFlexUsedFromPlan)
+  const lastPlanWrite = useRef(0)
+  useEffect(() => {
+    if (settings.mode !== 'myshift' || flexOn) return
+    const nowMs = Date.now()
+    if (nowMs - lastPlanWrite.current < 60000) return
+    const list = myShiftActList
+    if (list.length === 0) return
+    lastPlanWrite.current = nowMs
+    const effSecs = effectiveSecs
+    const map: Record<string, number> = {}
+    for (const act of list) {
+      if (!act.isBreak) continue
+      const st = timeToSeconds(`${act.startTime}:00`)
+      const en = timeToSeconds(`${act.endTime}:00`)
+      const effDur = act.duration * 60
+      let used = 0
+      if (effSecs >= en) used = effDur
+      else if (effSecs >= st) used = effSecs - st
+      if (used > 0) map[act.id] = used
+    }
+    if (Object.keys(map).length > 0) syncFlexUsedFromPlan(map)
+  }, [settings.mode, flexOn, myShiftActList, effectiveSecs, syncFlexUsedFromPlan, time])
 
   // Push live status to the tray tooltip (refreshed ~once per second via timeString)
   useEffect(() => {
@@ -1006,6 +1091,7 @@ export function useLiveShiftEngine() {
     currentTimeSecs: timeString, // "HH:mm:ss"
     currentDateStr,
     activeTemplate: resolvedTemplate,
+    activityList: myShiftActList,
     ...engineState,
     remainingTimeStr: formatRemaining(engineState.remainingSeconds, engineState.isOvertime, hLabel, mLabel, true),
     effectiveTime: secondsToHHMM(effectiveSecs),
@@ -1034,6 +1120,7 @@ export function useLiveShiftEngine() {
     flexRemainingSecs,
     flexRemainingMap,
     flexUsedBy,
+    planUsedBy,
     flexActiveId,
     flexOverage,
     flexRunning,
