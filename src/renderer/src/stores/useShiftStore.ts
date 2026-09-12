@@ -934,9 +934,24 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
 
   uncompleteShift: async (dateStr) => {
     const { completedShifts } = get()
-    const newCompleted = completedShifts.filter(d => d !== dateStr)
-    set({ completedShifts: newCompleted, confirmedActivities: [] })
+    const newCompleted = completedShifts.filter((d) => d !== dateStr)
+    // Re-opening a finished day renews its break allowances — flex/planned ledger
+    // starts fresh so the continued shift keeps the scheduled breaks usable.
+    set({
+      completedShifts: newCompleted,
+      confirmedActivities: [],
+      flexMode: false,
+      flexTotalSecs: 0,
+      flexUsedSecs: 0,
+      flexBreakSecs: {},
+      flexUsedBy: {},
+      planUsedBy: {},
+      flexActiveId: null,
+      flexRunningMs: null,
+      flexFrozenEff: 0
+    })
     get().updateDayLog(dateStr, { completed: false })
+    persistIdle()
 
     const api = window.electronAPI
     if (api && api.store) {
@@ -952,8 +967,36 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
 
   // MyShift "kaydırma" — apply a standing shift so the first activity effectively
   // starts at the requested time. Passing 0 clears today's shift (and any pause).
+  // When the shift was already finished for today, kaydırma re-opens the schedule —
+  // renew the day's break allowances (flex + planned ledger) so breaks are usable
+  // again instead of staying "tükendi" from the finished day.
   setDayShift: (secs) => {
+    const s = get()
     const day = todayStr()
+    const done = s.completedShifts.includes(day) || (s.dailyLogs[day]?.completed ?? false)
+    if (secs > 0 && done) {
+      set({
+        flexMode: false,
+        flexTotalSecs: 0,
+        flexUsedSecs: 0,
+        flexBreakSecs: {},
+        flexUsedBy: {},
+        planUsedBy: {},
+        flexActiveId: null,
+        flexDay: day,
+        flexRunningMs: null,
+        flexFrozenEff: 0
+      })
+      const newCompleted = s.completedShifts.filter(d => d !== day)
+      set({ completedShifts: newCompleted })
+      const api = window.electronAPI
+      if (api && api.store) {
+        api.store.set('completedShifts', newCompleted)
+      } else {
+        localStorage.setItem('completedShifts', JSON.stringify(newCompleted))
+      }
+      get().updateDayLog(day, { completed: false })
+    }
     set({ dayShiftSecs: Math.max(0, Math.round(secs)), shiftDay: day, myshiftPaused: false, pauseWallAt: null })
     persistIdle()
   },
