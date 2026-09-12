@@ -399,8 +399,46 @@ export default function SettingsView() {
                         : t('settingsView.cloudNotSyncedYet')
                 }
                 right={
+                  <span className={`text-[10px] px-2 py-1 rounded-md border flex-shrink-0 ${
+                    cloud.status === 'syncing'
+                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                      : cloud.status === 'error'
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  }`}>
+                    {cloud.status === 'syncing'
+                      ? t('settingsView.cloudSyncing')
+                      : cloud.status === 'error'
+                        ? t('settingsView.cloudError')
+                        : t('settingsView.cloudManual')}
+                  </span>
+                }
+              />
+              <Row
+                icon="⬇️"
+                title={t('settingsView.cloudPullBtn')}
+                description={t('settingsView.cloudPullDesc')}
+                right={
                   <button
-                    onClick={cloud.syncNow}
+                    onClick={() => { if (window.confirm(t('settingsView.cloudPullConfirm'))) cloud.pullNow() }}
+                    disabled={cloud.status === 'syncing'}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex-shrink-0 ${
+                      cloud.status === 'syncing'
+                        ? 'bg-white/5 border border-white/10 text-slate-500 cursor-not-allowed'
+                        : 'bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-md shadow-sky-500/20'
+                    }`}
+                  >
+                    {t('settingsView.cloudPullBtn')}
+                  </button>
+                }
+              />
+              <Row
+                icon="⬆️"
+                title={t('settingsView.cloudPushBtn')}
+                description={t('settingsView.cloudPushDesc')}
+                right={
+                  <button
+                    onClick={() => { if (window.confirm(t('settingsView.cloudPushConfirm'))) cloud.pushNow() }}
                     disabled={cloud.status === 'syncing'}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex-shrink-0 ${
                       cloud.status === 'syncing'
@@ -408,7 +446,7 @@ export default function SettingsView() {
                         : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20'
                     }`}
                   >
-                    {t('settingsView.cloudSyncNowBtn')}
+                    {t('settingsView.cloudPushBtn')}
                   </button>
                 }
               />

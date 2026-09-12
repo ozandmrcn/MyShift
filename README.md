@@ -190,12 +190,16 @@ VITE_FIREBASE_APP_ID=1:1234567890:web:abcdef1234567890
 
 **6. Restart and sign in**
 
-Closed settings are read at startup, so restart the app. Use **Data → Cloud** in the app to sign in with Google (the sign-in happens through a local loopback redirect — credentials never leave your machine except to Firebase).
+Closed settings are read at startup, so restart the app. Go to **Settings → Cloud** in the app and sign in with Google (the sign-in happens through a local loopback redirect — credentials never leave your machine except to Firebase).
 
 ### How sync behaves
 
-- On login, the app pulls your cloud data and merges — **newer wins** per document (so a factory reset on one device won't wipe your cloud backup).
-- Any local change is pushed automatically (debounced by ~2 seconds), day by day.
+Sync is **fully manual** — nothing is uploaded or downloaded automatically:
+
+- **Push** uploads your local data (settings, templates, completed shifts **and** every tracked day) to the cloud, **overwriting whatever is there**.
+- **Pull** downloads the cloud copy and **overwrites your local data**. Any local-only changes that were never pushed will be lost.
+- Use **Settings → Cloud** in the app after signing in: first time on a new device, **Pull** to get your data; after changing settings or finishing a shift, **Push** to save it.
+- Both actions ask for confirmation before overwriting, and the last sync time is shown.
 - Data layout: `users/{uid}/meta/current` holds settings, templates and completed-shift dates; `users/{uid}/days/{YYYY-MM-DD}` holds one document per tracked day.
 - Sync diagnostics are appended to `data/cloud-sync.log` in the app's data directory.
 

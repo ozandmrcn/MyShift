@@ -312,6 +312,7 @@ interface ShiftStore {
   cloudImportMeta: (meta: { settings: Settings; templates: ShiftTemplate[]; completedShifts: string[] }) => void
   cloudImportDay: (dateStr: string, log: DayLog) => void
   cloudImportDays: (days: Record<string, DayLog>) => void
+  cloudReplaceDays: (days: Record<string, DayLog>) => void
   factoryReset: () => Promise<void>
   flushState: () => void
 }
@@ -1599,6 +1600,16 @@ const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
       api.store.set('dailyLogs', newLogs)
     } else {
       localStorage.setItem('dailyLogs', JSON.stringify(newLogs))
+    }
+  },
+
+  cloudReplaceDays: (days) => {
+    set({ dailyLogs: days })
+    const api = window.electronAPI
+    if (api?.store) {
+      api.store.set('dailyLogs', days)
+    } else {
+      localStorage.setItem('dailyLogs', JSON.stringify(days))
     }
   },
 
