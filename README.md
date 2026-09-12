@@ -1,136 +1,276 @@
-# MyShift v1.0.0
+# MyShift
 
-**Personal Shift Management System** — a privacy-first, offline-first desktop app for Windows that manages your workday based on custom shift plans.
+**Dynamic Shift Management System** — a privacy-first, offline-first desktop app for Windows that keeps your workday on track from custom shift plans, with an effective "schedule clock", pooled break accounts, overtime tracking and a real-time dashboard.
 
-Everything runs locally on your machine by default: no cloud, no accounts, no data leaves your device. An optional, opt-in Google/Firebase sync and a local-only admin panel exist but are fully disabled until you configure them.
+Everything runs on your machine by default: **no cloud, no accounts, no telemetry**. An optional Google/Firebase sync and a local-only admin panel exist, but they stay fully disabled until you explicitly configure them.
 
 ![Electron](https://img.shields.io/badge/Electron-31-blue?logo=electron)
 ![React](https://img.shields.io/badge/React-19-61dafb?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6?logo=typescript)
-![Tailwind](https://img.shields.io/badge/Tailwind_CSS-v4-06b6d4?logo=tailwindcss)
+![Tailwind](https://img.shields.io/badge/Tailwind_CSS-v4-06d6d4?logo=tailwindcss)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
 ## Features
 
-### Three Shift Modes
+### Three shift modes for any kind of workday
 
 | Mode | Description |
 |------|-------------|
-| **MyShift** | Unlimited custom templates with weekday/date/holiday scheduling, flexible/planned breaks, quick presets, JSON import/export |
-| **Pay** | Fixed window (start–end time) or target duration mode; short/meal break budgets; overtime tracking with automatic payback |
-| **Chrono** | Manual chronograph — start/stop work and breaks with buttons, no fixed schedule required |
+| **MyShift** *(Template)* | Build unlimited shift templates with activities, breaks, weekday/date scheduling and holiday presets |
+| **Pay** | A fixed work window (start–end) or a target amount of work minutes, with short-break and meal-break budgets |
+| **Chrono** | A manual stopwatch mode — start, pause and resume working and breaks whenever you like |
 
-### Core Engine
+### Core engine
 
-- **Live shift engine** — current/next activity, remaining time, and progress update every second
-- **Effective clock** — the engine works on an "effective time of day": a late start (kaydırma), pausing, or a running flex break all shift/freeze it, never real wall time
-- **Confirmation gate** — each work activity after the first requires explicit confirmation; unconfirmed time counts as overtime
-- **Overtime (idle) tracking** — measures time spent idle while working is expected; auto-resets at day start
-- **Payback** — earn back your overtime time by working; finishes automatically when paid matches owed (no over-payment)
-- **Break management** — *Programlı* (scheduled on the window clock) or *Esnek* (pooled, spendable chip-by-chip) breaks with per-day budgets; over-budget breaks count as overtime
-- **Chrono work/break reminders** — configurable alerts for continuous work or long breaks
+- **Live shift engine** — current activity, next activity, remaining time and day progress update every second
+- **Effective clock** — the engine tracks *scheduled time of day*, not wall time. A late arrival, a pause or a running flexible break shifts or freezes it
+- **Confirmation gate** — every activity after the first waits for your explicit "done" confirm, so drifting never counts as planned work by accident
+- **Overtime tracking** — time spent idle while work is expected (or after the scheduled shift end) accrues as overtime
+- **Payback** — earn that overtime back by working; payback stops exactly when the debt reaches zero
+- **Planned / Flexible breaks** — breaks run on the schedule clock (planned) or become a spendable minute pool you draw from whenever you want (flexible)
+- **Work & break reminders** — configurable nudges for continuous work or long breaks in Pay/Chrono modes
 
 ### Dashboard & UI
 
-- **Real-time clock** with activity-aware AI comments (offline or via Ollama/OpenAI/OpenRouter)
-- **Today's timeline** — hourly log with break, work, and idle segments
-- **Day summary stats** — worked, idle, payback, break time at a glance
-- **7-day weekly heatmap** — intensity-coded worked hours with completion markers
-- **Weather widget** — live weather from Open-Meteo API (no API key) with condition-based emoji and color themes
-- **Quick mode switcher** — switch between MyShift/Pay/Chrono directly from the dashboard
+- **Real-time clock** with context-aware AI comments (offline engine, or via Ollama / OpenAI / OpenRouter)
+- **Today's timeline** — an hour-by-hour strip of work, break and idle segments
+- **Day summary** — worked, idle, overtime, payback and break totals at a glance
+- **7-day heatmap** — intensity-coded worked hours with completion markers
+- **Live weather widget** — from the Open-Meteo API, **no API key needed**
+- **Quick mode switcher** — flip between MyShift / Pay / Chrono right from the dashboard
 
-### Data & Persistence
+### Data & persistence
 
-- **Full data export/import** — JSON backup of templates, settings, history, and AI profile
-- **Factory reset** — typed confirmation ("reset") wipes all data and starts fresh
-- **Auto-pruning** — history older than 90 days is automatically cleaned
-- **Same-day persistence** — counters, confirmation state, and daily logs survive app restarts
+- **Full export/import** — a single JSON backup of templates, settings, history and the AI profile
+- **Same-day persistence** — counters, confirmation state and the daily log survive restarts
+- **Auto-pruning** — history older than 90 days is cleaned automatically
+- **Factory reset** — wipes everything after a typed confirmation
 
-### System Integration
+### System integration
 
-- **Windows notifications** — shift start, activity transitions, break reminders, completion
-- **Synthesized sounds** — Web Audio notification sounds (bell, digital, default)
-- **System tray** — live status tooltip with actions: Show, Complete Shift, Reset Overtime, Quit
+- **Windows notifications** — shift start, activity changes, break reminders, day completion
+- **Synthesized sounds** — bell, digital and default tones via the Web Audio API
+- **System tray** — live status tooltip plus quick actions: show window, complete the shift, reset idle, reset breaks, quit
 - **Startup options** — launch with Windows, start minimized, auto-minimize to tray
-- **Turkish public holidays** — one-click holiday template extension (2026 dates included)
+- **Public holiday presets** — one-click holiday template extension (Turkey, 2026 dates included)
 
 ### Customization
 
 - **6 color themes** — Night Blue, Emerald, Turquoise, Violet, Cherry, Amber
-- **Birthday mode** — set your birthday as a day-off in the schedule
-- **Time offset** — rewind/fast-forward the clock for testing or replay
-- **Motivation engine** — context-aware status lines driven by shift progress and idle time
+- **Birthday mode** — designate your birthday as an automatic day off
+- **Time offset** — rewind or fast-forward the clock for testing and review
+- **Motivation engine** — status lines that react to your progress (and your procrastination)
+- **Turkish & English UI** — switch the interface language in Settings
 
 ---
 
 ## Requirements
 
-- **Windows 10 or 11** (x64)
-- **Node.js 18+** (20+ recommended) — for building from source
-- **npm** (comes with Node.js)
+| Software | Version |
+|----------|---------|
+| Operating system | Windows 10 or 11 (x64) |
+| Node.js | 18+ (20 LTS recommended) — only to run/build from source |
+| npm | Bundled with Node.js |
+
+No Node.js is needed if you use a pre-built installer (see [Option A](#option-a--pre-built-installer)).
 
 ---
 
-## Installation
+## Getting Started
 
-### Option A — Pre-built Releases
+### Option A — Pre-built installer
 
-Download the latest `.exe` installer from the [Releases](https://github.com/ozandemircan/myshift/releases) page, run it, and follow the prompts. No Node.js needed.
+1. Download the latest installer (`.exe`) from the [Releases](https://github.com/ozandmrcn/MyShift/releases) page.
+2. Run the installer and follow the on-screen prompts.
+3. Launch **MyShift** from your Start menu or desktop shortcut.
 
-### Option B — From Source
+Done — no Node.js, no terminal, no configuration required.
+
+### Option B — From source
+
+If you want to run, tweak or develop the app yourself:
+
+**Step 1 — Install Node.js**
+
+Download the LTS installer from [nodejs.org](https://nodejs.org) and run it. Verify it afterwards:
 
 ```bash
-# 1) Clone the repository
-git clone https://github.com/ozandemircan/myshift.git
-cd myshift
+node --version
+npm --version
+```
 
-# 2) Install dependencies
+**Step 2 — Clone the repository**
+
+```bash
+git clone https://github.com/ozandmrcn/MyShift.git
+cd MyShift
+```
+
+**Step 3 — Install dependencies**
+
+```bash
 npm install
+```
 
-# 3) Run in development mode (hot-reload)
+**Step 4 — Start the app in development mode**
+
+```bash
 npm run dev
 ```
 
-**First run:** pick your mode (MyShift / Pay / Chrono) and, if you use MyShift, create your first shift plan in **Shift Editor** (see *How to Use*). No `.env` file is required — the app works fully offline out of the box.
+A window opens with hot-reload enabled: any change you make to the source is applied instantly.
 
-### Build for Production
+> **First run:** pick your mode (MyShift / Pay / Chrono). In **MyShift** mode, create your first plan in **Shift Editor** (see [How to Use](#how-to-use)). No `.env` file is required — the app works fully offline out of the box.
+
+---
+
+## Building a production installer
 
 ```bash
-# Build the renderer + main process
-npm run build
-
-# Create an unpacked build (portable)
-npm run pack
-
-# Create an NSIS installer (.exe)
-npm run dist
+npm run build   # compiles main process + renderer into out/
+npm run pack    # creates an unpacked build (portable) in dist/
+npm run dist    # compiles + builds the NSIS installer (.exe) in dist/
 ```
 
-The built application lands in the `dist/` directory.
+The output lands in the `dist/` directory.
 
-### Optional: Cloud Sync + Admin Panel
+---
 
-Both are **opt-in and off by default**. Copy `.env.example` → `.env` and fill in the values you need:
+## Optional: Firebase Cloud Sync
+
+Cloud sync is **opt-in and off by default**. It signs you in with your Google account and keeps your settings, templates and history in sync across devices. Without configuration the app stays 100% local.
+
+### Step-by-step setup
+
+**1. Create a Firebase project**
+
+Go to the [Firebase Console](https://console.firebase.google.com) → **Add project**. Give it any name (e.g. *myshift-sync*).
+
+**2. Register a web app**
+
+In **Project Settings → Your apps → Web** (the `</>` icon), register an app. The console shows a `firebaseConfig` object with 6 values. Keep this page open — you'll paste them into `.env` in step 5.
+
+**3. Enable Google sign-in**
+
+In **Authentication → Sign-in method**, enable **Google**, add your support email and save.
+
+**4. Set Firestore security rules**
+
+In **Firestore Database → Rules** (create the database first if asked), make sure the rules limit access to each user's own documents:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
+```
+
+**5. Configure `.env`**
 
 ```bash
 copy .env.example .env
 ```
 
-- **Cloud sync (renderer):** define the `VITE_FIREBASE_*` web-app values from the Firebase Console. The Cloud button in the app then signs in with Google and back up/restores your settings, templates, and history per account. If these are missing/misconfigured, the app silently stays 100% local.
-- **Admin panel (local-only web UI over your Firestore):** define `FIREBASE_ADMIN_SERVICE_ACCOUNT` (a service-account key file path) or the inline `FIREBASE_ADMIN_PROJECT_ID` / `CLIENT_EMAIL` / `PRIVATE_KEY` fields, then:
+Fill in the six `VITE_FIREBASE_*` values from step 2:
 
-  ```bash
-  cd admin
-  npm install
-  cd ..
-  npm run admin
-  ```
+```
+VITE_FIREBASE_API_KEY=AIzaSy...
+VITE_FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=1234567890
+VITE_FIREBASE_APP_ID=1:1234567890:web:abcdef1234567890
+```
 
-  Open `http://localhost:5100`. There is **no login** — authorization comes from the service-account key, which has full Firestore access. Keep the key private (`.env` is git-ignored) and rotate it if it ever leaks.
+**6. Restart and sign in**
 
-    > ⚠️ The `.env` file is excluded from git. **Never commit it** — it contains live credentials.
+Closed settings are read at startup, so restart the app. Use **Data → Cloud** in the app to sign in with Google (the sign-in happens through a local loopback redirect — credentials never leave your machine except to Firebase).
+
+### How sync behaves
+
+- On login, the app pulls your cloud data and merges — **newer wins** per document (so a factory reset on one device won't wipe your cloud backup).
+- Any local change is pushed automatically (debounced by ~2 seconds), day by day.
+- Data layout: `users/{uid}/meta/current` holds settings, templates and completed-shift dates; `users/{uid}/days/{YYYY-MM-DD}` holds one document per tracked day.
+- Sync diagnostics are appended to `data/cloud-sync.log` in the app's data directory.
+
+---
+
+## Optional: Local Admin Panel
+
+A small, local-only web UI for browsing and editing the Firestore data behind the cloud sync. It runs on your machine, binds to `127.0.0.1`, and authenticates using your service-account key — there is **no login form**.
+
+### Step-by-step setup
+
+**1. Generate a service-account key**
+
+In the Firebase Console: **Project Settings → Service accounts → Firebase Admin SDK → Generate new private key**. This downloads a `serviceAccountKey.json` file. Store it somewhere safe outside the repository.
+
+**2. Add the key to `.env`**
+
+```bash
+copy .env.example .env
+```
+
+Point the admin panel at the key file:
+
+```
+FIREBASE_ADMIN_SERVICE_ACCOUNT=C:/secure/serviceAccountKey.json
+```
+
+Alternatively, instead of a file path you can provide the three inline values:
+
+```
+FIREBASE_ADMIN_PROJECT_ID=your-project-id
+FIREBASE_ADMIN_CLIENT_EMAIL=firebase-adminsdk-xxx@your-project.iam.gserviceaccount.com
+FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+**3. Install and start the panel**
+
+```bash
+cd admin
+npm install
+cd ..
+npm run admin
+```
+
+**4. Open it**
+
+Browse to `http://localhost:5100`. To use another port, set `ADMIN_PORT` in `.env`.
+To manage a **second** Firebase project from the same panel, add the same variables prefixed with `FIREBASE_ADMIN2_` (e.g. `FIREBASE_ADMIN2_SERVICE_ACCOUNT`); a project picker then appears in the UI.
+
+### Security notes
+
+- The panel is **not meant to be deployed** — it has full Firestore access through the admin SDK and no user login.
+- `FIREBASE_ADMIN_SERVICE_ACCOUNT` is read from `.env`, which is **git-ignored**. Never commit it.
+- If a key ever leaks, **rotate it** in the Firebase Console and update `.env`.
+
+---
+
+## Environment variables
+
+| Variable | Purpose | Required for | Example |
+|----------|---------|--------------|---------|
+| `VITE_FIREBASE_API_KEY` | Web SDK config — must match your Firebase web app | Cloud sync | `AIzaSy...` |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Web SDK config | Cloud sync | `your-project.firebaseapp.com` |
+| `VITE_FIREBASE_PROJECT_ID` | Web SDK config | Cloud sync | `your-project-id` |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Web SDK config | Cloud sync | `your-project.firebasestorage.app` |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Web SDK config | Cloud sync | `1234567890` |
+| `VITE_FIREBASE_APP_ID` | Web SDK config | Cloud sync | `1:1234567890:web:abcdef1234567890` |
+| `FIREBASE_ADMIN_SERVICE_ACCOUNT` | Path to a service-account key `.json` | Admin panel (preferred) | `C:/secure/serviceAccountKey.json` |
+| `FIREBASE_ADMIN_PROJECT_ID` | Inline service-account fallback | Admin panel | `your-project-id` |
+| `FIREBASE_ADMIN_CLIENT_EMAIL` | Inline service-account fallback | Admin panel | `firebase-adminsdk-xxx@...` |
+| `FIREBASE_ADMIN_PRIVATE_KEY` | Inline service-account fallback (keep the `\n` escapes) | Admin panel | `"-----BEGIN PRIVATE KEY-----\n..."` |
+| `FIREBASE_ADMIN2_*` | Same keys, prefixed, for a second project | Admin panel (optional) | `FIREBASE_ADMIN2_SERVICE_ACCOUNT=...` |
+| `ADMIN_PORT` | HTTP port for the admin panel | Admin panel (defaults to `5100`) | `5100` |
+
+> **If no `VITE_FIREBASE_*` values are present, the app silently runs fully local.** Missing or invalid optional config never breaks the app.
 
 ---
 
@@ -138,122 +278,122 @@ copy .env.example .env
 
 ### 1. Pick a mode
 
-Use the **quick mode switcher** on top of the Dashboard (or Settings → Mode):
+Use the **quick mode switcher** at the top of the Dashboard (or **Settings → Mode**).
 
-- **MyShift** — you plan your day with activities and breaks (recommended if you follow a routine).
-- **Pay** — a simple work window: fixed hours or a target total, plus two break budgets (short + meal).
-- **Chrono** — a manual stopwatch (work/break) with no schedule.
+- **MyShift** — plan your day with activities and breaks (recommended for a routine schedule).
+- **Pay** — a simple work window: fixed hours or a target total, plus short-break and meal-break budgets.
+- **Chrono** — a manual stopwatch with no schedule.
 
 ### 2. MyShift: create your plan
 
-Open **Vardiya Düzenleyici (Shift Editor)**:
+Open **Shift Editor**:
 
-1. **+ Yeni** → name your template, e.g. "Yazılım Vardiyam".
-2. **Add activities** in order — each entry adds:
+1. **+ New** → name your template (e.g. "Dev shift").
+2. **Add activities** in order. Each entry has:
    - a name and an emoji icon,
-   - a start time (new activities auto-stack right where the previous one ended),
-   - a **🧘 Mola mı?** toggle — mark real breaks so they are never counted as work,
-   - an optional **notification** (with sound) to alert you when the activity starts,
+   - a start time (new activities stack right after the previous one ends),
+   - a **Break?** toggle — real breaks are never counted as work,
+   - an optional **notification** (with sound) when the activity starts,
    - optional **notes**.
-3. **Schedule it:** choose active weekdays, add **custom dates**, or use the **🇹🇷 TR Resmi Tatilleri** button for public holidays. Save and make sure the template is **active**.
-4. Tip: build separated week blocks with the **⚡ Hızlı Şablonlar** presets, then duplicate and tweak.
+3. **Schedule it:** choose active weekdays, add **custom dates**, or use the **public holiday** preset for Turkey's official 2026 holidays. Save and make sure the template is **active**.
+4. Tip: build separated week blocks with the **Quick Templates** presets, then duplicate and tweak.
 
-The engine resolves today's plan by priority: **birthday** (if a "Doğum Günü" template exists and it's your birthday) → **custom date** → **weekday**.
+The engine resolves today's plan by priority: **birthday template** (if it exists and it's your birthday) → **custom date** → **weekday**.
 
-### 3. The effective clock and "kaydırma"
+### 3. The effective clock
 
-Above the timeline you see **Efektif saat (effective clock)** — the schedule time, not the wall time. Everything else (progress, aşım, "next break") is computed from it.
+Above the timeline you see the **effective clock** — scheduled time of day, not wall time. Everything else (progress, overtime, "next break") is computed from it.
 
-- **Started late?** When you arrive after the plan start, a banner asks *"The day was planned to start at 07:00"* → **I Started Late / Kaydır**. The whole schedule shifts forward to match your real arrival (e.g. all 15-min breaks now show their shifted time in amber).
-- **Pause (Duraklat)** freezes the effective clock where it stands — no aşım, no breaks cut — and shifts the schedule forward on resume.
-- **Rewind / Return to live** (time offset) lets you jump the clock for testing or review; it never records real work.
+- **Started late?** When you arrive after the plan start, a banner asks *"The day was planned to start at 07:00"* → choose **Start Late**. The whole schedule shifts forward to match your real arrival.
+- **Pause** freezes the effective clock where it stands — no overtime, no breaks cut — and shifts the schedule forward when you resume.
+- **Rewind / return to live** (time offset) jumps the clock for testing or review; it never records real work.
 
-### 4. Breaks: Programlı (planned) or Esnek (flexible)
+### 4. Breaks: planned or flexible
 
-The toggle above the timeline picks how scheduled breaks behave:
+The toggle above the timeline chooses how scheduled breaks behave:
 
-- **Programlı (Planned)** — breaks run automatically on the schedule clock: the day plays like a script, and a break counts the moment its window arrives. If you hold a break longer than planned, the remaining days shift accordingly.
-- **Esnek (Flexible)** — scheduled break minutes become a **pool** you spend whenever you like:
-  - The panel shows a pool bar (used/remaining) plus a **chip per break** (name + minutes left).
-  - **Click a green chip** → the break starts (☕). The effective clock freezes while it runs within its allowance. **Click it again** → it stops (⏹), and the unused minutes stay for later.
-  - A chip turns **✔ Tükendi** when its own allowance is fully spent; a partially used break stays partial and can be resumed.
-  - During a break's original slot you keep "working" in the engine's eyes, so nothing counts as idle/aşım there, and your shift end stays as scheduled.
+- **Planned** — breaks run automatically on the schedule clock. The day plays like a script; a break counts the moment its window arrives. Holding a break longer than planned shifts the remaining schedule accordingly.
+- **Flexible** — scheduled break minutes become a **pool** you spend whenever you like:
+  - A panel shows a pool bar (used / remaining) plus a **chip per break** (name + minutes left).
+  - **Click a green chip** to start the break (☕). The effective clock freezes while it runs within its allowance. **Click it again** to stop (⏹) — unused minutes stay for later.
+  - A chip turns **Depleted** (✔) when its allowance is fully spent; a partially used break stays partial and can be resumed.
+  - During a break's original slot the engine still sees you "working", so no overtime accrues there and your shift end stays as scheduled.
 
-> The pool is a **shared ledger**: flex spending and planned spending both draw from the same per-break allowance, so switching modes mid-day never double-spends.
+> The pool is a **single shared ledger**: flexible and planned spending draw from the same per-break allowance, so switching modes mid-day never double-spends.
 
-### 5. Confirmation gate
+### 5. The confirmation gate
 
-Work activities after the first don't auto-progress: when one finishes, the bar shows **Onay Bekliyor — Onayla ve Geç**. Until you confirm, that dead time counts as aşım (overtime) — this is what keeps you honest when you drift. You can also **Sıradaki Aktiviteye Geç** early to skip an activity without aşım.
+Work activities after the first don't auto-progress. When one finishes, the bar shows **Awaiting confirmation** until you press **Confirm and continue**; until then that time counts as overtime — this keeps you honest when you drift. You can also **skip to the next activity** early, without overtime.
 
 ### 6. Completing the day
 
-- **Vardiyayı Tamamla** ends the day; a success card shows the totals.
-- **↩ Geri Al / Devam Et** re-opens a finished day — the break ledger starts fresh, so you keep working without stuck "Tükendi" chips.
-- A **kaydırma** on a finished/aşım day re-opens it too (same fresh-ledger behavior).
-- If the schedule ran past its end without completing, the app keeps counting **aşım** every second until you finish.
+- **Complete Shift** ends the day; a success card shows the totals.
+- **Reopen** re-opens a finished day — the break ledger starts fresh, so you keep working without stuck "depleted" chips.
+- A **Start Late** on a finished/overtime day reopens it too (same fresh-ledger behavior).
+- If the schedule ran past its end without completing, the app keeps counting overtime every second until you finish.
 
-### 7. Aşım (overtime) and payback
+### 7. Overtime and payback
 
-- Aşım accrues while you're idle when work is expected, while past the shift end without completing, and during over-budget breaks.
-- **Payback Başlat** lets you work it off: the payback counter decreases every second while you're active, and it auto-stops exactly when aşım reaches zero (no negative overpay).
-- **↺ Aşımı Sıfırla** clears today's aşım counter (e.g. after testing).
+- Overtime accrues while you're idle when work is expected, past the shift end without completing, and during over-budget breaks.
+- **Start Payback** lets you work it off: the counter decreases while you're active and stops exactly when overtime reaches zero.
+- **Reset breaks / Reset idle** (tray or UI) clears today's counters, e.g. after testing.
 
 ### 8. Pay mode
 
-- **Window mode** — fixed *Başlangıç/Bitiş* times; progress is time-based.
-- **Duration mode** — you owe a fixed number of **work minutes** (kalan azalır çalıştıkça, molalar sayılmaz); completion triggers when the target is reached.
-- Two budgets (Kısa Mola + Yemek Molası). Remaining shrink per break; once a budget is empty, further breaks are logged as **aşım**. Start/stop breaks from the Dashboard with **☕ Mola Başlat / ⏱️ Çalışmaya Dön**. Optional work/break reminders nudge you.
+- **Window mode** — fixed shift start/end; progress is time-based.
+- **Duration mode** — you owe a fixed number of **work minutes** (remaining decreases while you work, breaks don't count); completion triggers when the target is reached.
+- Two budgets: **Short break** and **Meal break**. Remaining shrink per break; once a budget is empty, further breaks are logged as overtime. Start/stop breaks from the Dashboard with **Start Break / Back to Work**. Optional work/break reminders nudge you.
 
 ### 9. Chrono mode
 
-Press **▶ Çalışmaya Başla**, switch to **☕ on break**, and back — the counters accumulate automatically. No schedule, no aşım. Reminder intervals are configurable in Settings → Chrono.
+Press **Start Working**, switch to **☕ on break**, and back. Counters accumulate automatically. No schedule, no overtime. Reminder intervals are configurable in **Settings → Chrono**.
 
 ### 10. Everyday niceties
 
-- **Tray**: right-click the icon for Show / Complete Shift / Reset Overtime / Quit; the tooltip shows live status.
-- **Weather widget**: enable + pick a city in Settings; works without an API key.
-- **Themes**: choose one of 6 palettes in Settings with a live preview.
-- **Comments**: the line under the clock is generated locally by default; plug Ollama/OpenAI/OpenRouter in Settings → AI for richer text.
-- **Observe**: let the app profile your usage to improve comments (optional; export/import the AI profile via Data).
-- **Data view**: export/import a full JSON backup, clear history, or factory reset ("reset").
+- **Tray** — right-click the icon: Show / Complete Shift / Reset Idle / Reset Breaks / Quit; the tooltip shows live status.
+- **Weather widget** — enable and pick a city in Settings; works without an API key.
+- **Themes** — pick one of 6 palettes in Settings with a live preview.
+- **AI comments** — the line under the clock is generated locally by default; plug in Ollama / OpenAI / OpenRouter in **Settings → AI** for richer text.
+- **Observe** — an opt-in recording mode that profiles how you use the app to improve its comments. While recording, the app locks to the Observe page and keeps a clock; your profile can be exported/imported via **Data**.
+- **Data view** — export/import a full JSON backup, clear history, or factory reset.
 
 ---
 
-## Data Storage
+## Data & storage
 
-All data is stored locally via `electron-store` in the app's data directory:
+All data is stored locally via `electron-store` in the app's data directory (`%APPDATA%\MyShift` for the packaged app):
 
 | Key | Contents |
 |-----|----------|
 | `templates` | Shift templates (activities, schedules, holidays) |
 | `settings` | App settings (mode, pay config, chrono config, weather, theme) |
 | `completedShifts` | List of completed shift dates |
-| `idleState` | Live idle/payback/work counters + chrono state |
+| `idleState` | Live idle/payback/work counters and chrono state |
 | `breakState` | Current break, usage budgets, break count |
 | `todayDetail` | Hourly log, break log, idle log, confirmed activities |
-| `dailyLogs` | Historical per-day records (worked/idle/break seconds) |
+| `dailyLogs` | Historical per-day records (worked / idle / break seconds) |
 
-**Note:** Idle/payback counters measure real time only while the app is running. Closing the app pauses all timers.
+**Note:** idle/payback counters measure real time only while the app is running. Closing the app pauses all timers.
 
 ---
 
-## Settings
+## Settings reference
 
 | Section | Options |
 |---------|---------|
 | **Startup** | Launch with Windows, start minimized, minimize to tray |
-| **Notifications** | Default sound (bell/digital/none), per-mode work/break reminders |
-| **Mode** | MyShift / Pay / Chrono — quick switcher on dashboard |
+| **Notifications** | Default sound (bell / digital / none), per-mode work & break reminders |
+| **Mode** | MyShift / Pay / Chrono — quick switcher on the dashboard |
 | **Pay Config** | Window or duration mode, shift times, break budgets |
-| **Chrono Config** | Work/break reminder intervals |
-| **AI Comments** | Offline generative / Ollama / OpenAI / OpenRouter |
+| **Chrono Config** | Work / break reminder intervals |
+| **AI Comments** | Offline engine / Ollama / OpenAI / OpenRouter |
 | **Theme** | 6 color themes with live swatch preview |
 | **Weather Widget** | Enable/disable, city search with geocoding |
 | **Data** | Export, import, clear history, factory reset |
 
 ---
 
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -265,52 +405,54 @@ All data is stored locally via `electron-store` in the app's data directory:
 | State management | Zustand 5 |
 | Routing | React Router 6 |
 | Persistence | electron-store 8 |
-| Optional cloud | Firebase Web SDK 12 (opt-in) |
+| Optional cloud | Firebase Web SDK 12 + Firebase Admin SDK (both opt-in) |
 | Packaging | electron-builder 24 |
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 MyShift/
 ├── src/
 │   ├── main/                          # Electron main process
-│   │   └── index.ts                   #   Window, tray, notifications, IPC, CSP
+│   │   └── index.ts                   #   Window, tray, notifications, IPC, CSP, surveillance
 │   ├── preload/
 │   │   └── index.ts                   #   contextBridge API (secure bridge)
 │   ├── renderer/
 │   │   └── src/
-│   │       ├── App.tsx                #   Root: navigation, routes, tray actions
+│   │       ├── App.tsx                #   Root: navigation, routes, tray action wiring
 │   │       ├── components/
-│   │       │   ├── Dashboard.tsx      #   Main dashboard with all mode-specific UI
-│   │       │   ├── Timeline.tsx       #   Today timeline + (esnek) break chips
+│   │       │   ├── Dashboard.tsx      #   Main dashboard with mode-specific UI
+│   │       │   ├── Timeline.tsx       #   Today timeline + flexible-break chips
 │   │       │   ├── Titlebar.tsx       #   Custom Windows title bar
-│   │       │   ├── BreakReminders.tsx #   Pay mode break/work reminders
-│   │       │   ├── TypewriterText.tsx #   Animated typewriter effect for comments
+│   │       │   ├── BreakReminders.tsx #   Pay/Chrono work & break reminders
+│   │       │   ├── TypewriterText.tsx #   Animated typewriter text for comments
 │   │       │   └── WeatherWidget.tsx  #   Live weather widget (Open-Meteo API)
 │   │       ├── firebase/
-│   │       │   └── cloudSync.ts       #   Optional cloud sync (opt-in, per account)
+│   │       │   ├── firebase.ts        #   Web SDK init + Google auth (gated by VITE_FIREBASE_*)
+│   │       │   └── cloudSync.ts       #   Optional cloud sync helpers
 │   │       ├── hooks/
 │   │       │   ├── useLiveShiftEngine.ts # Core shift engine (3 modes)
-│   │       │   └── useCloudSync.ts    #   Optional Firebase wiring
+│   │       │   └── useCloudSync.ts    #   Optional Firebase wiring (merge/push)
 │   │       ├── stores/
 │   │       │   └── useShiftStore.ts   #   Zustand store + persistence + actions
 │   │       ├── utils/
 │   │       │   ├── commentEngine.ts   #   AI comment generation (offline/online)
 │   │       │   ├── motivationEngine.ts#   Context-aware motivational lines
+│   │       │   ├── cloudLog.ts        #   Cloud-sync diagnostics (data/cloud-sync.log)
 │   │       │   └── soundEffects.ts    #   Web Audio notification sounds
 │   │       └── views/
 │   │           ├── ShiftEditor.tsx    #   Template editor (create/edit shifts)
-│   │           ├── Settings.tsx       #   App settings (mode, pay, chrono, weather)
+│   │           ├── Settings.tsx       #   App settings (mode, pay, chrono, weather, AI)
 │   │           ├── TodaySummary.tsx   #   End-of-day detailed summary
-│   │           ├── History.tsx        #   Historical shift data & weekly stats
-│   │           ├── Data.tsx           #   Export/import data management
-│   │           └── Observe.tsx        #   App usage surveillance & AI profiling
+│   │           ├── History.tsx        #   Historical data & weekly stats
+│   │           ├── Data.tsx           #   Export/import, cloud, factory reset
+│   │           └── Observe.tsx        #   Opt-in recording & AI profiling
 │   └── shared/
 │       └── aiTypes.ts                 #   Shared AI types between main/renderer
-├── admin/                             # Optional local-only admin panel (Firestore)
-│   ├── server.js                      #   Express + Firebase Admin (port 5100)
+├── admin/                             # Local-only admin panel (Firestore web UI)
+│   ├── server.js                      #   Express + Firebase Admin (127.0.0.1:5100)
 │   └── public/index.html              #   Single-file panel UI
 ├── resources/
 │   ├── icon.ico / icon.png            #   App icons
@@ -318,17 +460,17 @@ MyShift/
 ├── .env.example                       #   Optional Firebase/admin config template
 ├── package.json
 ├── electron.vite.config.ts
-├── tsconfig.json
-└── index.css                          #   Theme palettes + global styles
+└── tsconfig.json
 ```
 
 ---
 
-## Known Limitations
+## Known limitations
 
-- Daily summaries are recorded only while the app is running
-- Turkish holiday dates (Ramazan/Kurban) are approximate and should be verified yearly
-- Weather widget requires an internet connection (data from Open-Meteo API, no API key needed)
+- Daily summaries are recorded only while the app is running (closing the app pauses all timers).
+- Religious holiday dates (Eid al-Fitr / Eid al-Adha) are approximate and should be verified each year.
+- The weather widget needs an internet connection (Open-Meteo API, no key required).
+- Cloud sync and the admin panel are single-user features per Google account.
 
 ---
 
@@ -340,4 +482,4 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ## Author
 
-**Ozan Demircan** — [GitHub](https://github.com/ozandemircan)
+**Ozan Demircan** — [GitHub](https://github.com/ozandmrcn)
