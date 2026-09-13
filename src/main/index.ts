@@ -56,46 +56,68 @@ const RENDERER_MIME: Record<string, string> = {
 // origin ("domain will not match the whitelisted ones" → auth/internal-error), so
 // giving the app a proper http://127.0.0.1 origin is what makes Google sign-in work
 // in the packaged app just like it does in dev.
+//
+// The port is persisted in electron-store and REUSED on every launch. Firebase
+// keeps the auth session in localStorage keyed to this exact origin
+// (http://localhost:PORT); a random port every launch would orphan that session
+// and force the user to re-sign-in each time. Only falls back to an ephemeral
+// port when the saved one is already taken.
 function startRendererServer(): Promise<string> {
   const root = join(__dirname, '../renderer')
   return new Promise((resolve, reject) => {
-    const server = createServer((req, res) => {
-      try {
-        let pathname = decodeURIComponent((req.url ?? '/').split('?')[0])
-        if (pathname === '/') pathname = '/index.html'
-        const norm = normalize(pathname)
-        const file = normalize(join(root, norm))
+    let fallbackTried = false
+    const serve = (port: number) => {
+      const server = createServer((req, res) => {
+        try {
+          let pathname = decodeURIComponent((req.url ?? '/').split('?')[0])
+          if (pathname === '/') pathname = '/index.html'
+          const norm = normalize(pathname)
+          const file = normalize(join(root, norm))
 
-        // Directory-traversal guard: the resolved path must stay inside out/renderer.
-        const within = file === root || file.startsWith(root + '\\') || file.startsWith(root + '/')
-        if (!within || !existsSync(file) || statSync(file).isDirectory()) {
+          // Directory-traversal guard: the resolved path must stay inside out/renderer.
+          const within = file === root || file.startsWith(root + '\\') || file.startsWith(root + '/')
+          if (!within || !existsSync(file) || statSync(file).isDirectory()) {
+            res.writeHead(404)
+            res.end('not found')
+            return
+          }
+
+          res.setHeader('Content-Type', RENDERER_MIME[extname(file).toLowerCase()] ?? 'application/octet-stream')
+          res.setHeader('Cache-Control', 'no-store')
+          res.end(readFileSync(file))
+        } catch {
           res.writeHead(404)
           res.end('not found')
+        }
+      })
+      rendererServer = server
+      server.on('error', (err: NodeJS.ErrnoException) => {
+        if (port === 0 || fallbackTried) {
+          reject(err)
           return
         }
-
-        res.setHeader('Content-Type', RENDERER_MIME[extname(file).toLowerCase()] ?? 'application/octet-stream')
-        res.setHeader('Cache-Control', 'no-store')
-        res.end(readFileSync(file))
-      } catch {
-        res.writeHead(404)
-        res.end('not found')
-      }
-    })
-    server.on('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const addr = server.address()
-      if (addr && typeof addr === 'object') {
-        // Advertise the origin as http://localhost:PORT (NOT 127.0.0.1): Firebase
-        // Auth whitelists `localhost` by default, so Google sign-in works without
-        // adding a custom "Authorized domain" in the console. IPv6-only resolution
-        // is safe because Chromium falls back to the IPv4 loopback which is bound.
-        resolve(`http://localhost:${addr.port}`)
-      } else {
-        reject(new Error('Renderer server bound without an address'))
-      }
-    })
-    rendererServer = server
+        // The saved port is busy — retry once on an ephemeral port and remember
+        // the new one so the origin stays stable for Firebase auth afterwards.
+        fallbackTried = true
+        console.warn(`[main] preferred renderer port ${port} busy, falling back to ephemeral`, err)
+        serve(0)
+      })
+      server.listen(port, '127.0.0.1', () => {
+        const addr = server.address()
+        if (addr && typeof addr === 'object') {
+          store.set('serverPort', addr.port)
+          // Advertise the origin as http://localhost:PORT (NOT 127.0.0.1): Firebase
+          // Auth whitelists `localhost` by default, so Google sign-in works without
+          // adding a custom "Authorized domain" in the console. IPv6-only resolution
+          // is safe because Chromium falls back to the IPv4 loopback which is bound.
+          resolve(`http://localhost:${addr.port}`)
+        } else {
+          reject(new Error('Renderer server bound without an address'))
+        }
+      })
+    }
+    const lastPort = store.get('serverPort', 0) as number
+    serve(lastPort > 0 ? lastPort : 0)
   })
 }
 

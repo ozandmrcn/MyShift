@@ -309,10 +309,10 @@ interface ShiftStore {
   updateAppUsage: (snapshot: AppUsageSnapshot) => void
   // Cloud sync imports — the cloudSync module pushes/pulls through these so every
   // write still goes through the normal persist path (electron-store / localStorage).
-  cloudImportMeta: (meta: { settings: Settings; templates: ShiftTemplate[]; completedShifts: string[] }) => void
+  cloudImportMeta: (meta: { settings: Settings; templates: ShiftTemplate[]; completedShifts: string[] }) => Promise<void>
   cloudImportDay: (dateStr: string, log: DayLog) => void
   cloudImportDays: (days: Record<string, DayLog>) => void
-  cloudReplaceDays: (days: Record<string, DayLog>) => void
+  cloudReplaceDays: (days: Record<string, DayLog>) => Promise<void>
   factoryReset: () => Promise<void>
   flushState: () => void
 }
@@ -1561,13 +1561,13 @@ const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
     set({ appUsage: snapshot })
   },
 
-  cloudImportMeta: (meta) => {
+  cloudImportMeta: async (meta) => {
     set({ settings: meta.settings, templates: meta.templates, completedShifts: meta.completedShifts })
     const api = window.electronAPI
     if (api?.store) {
-      void api.store.set('settings', meta.settings)
-      void api.store.set('templates', meta.templates)
-      void api.store.set('completedShifts', meta.completedShifts)
+      await api.store.set('settings', meta.settings)
+      await api.store.set('templates', meta.templates)
+      await api.store.set('completedShifts', meta.completedShifts)
     } else {
       localStorage.setItem('settings', JSON.stringify(meta.settings))
       localStorage.setItem('templates', JSON.stringify(meta.templates))
@@ -1603,11 +1603,11 @@ const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
     }
   },
 
-  cloudReplaceDays: (days) => {
+  cloudReplaceDays: async (days) => {
     set({ dailyLogs: days })
     const api = window.electronAPI
     if (api?.store) {
-      api.store.set('dailyLogs', days)
+      await api.store.set('dailyLogs', days)
     } else {
       localStorage.setItem('dailyLogs', JSON.stringify(days))
     }

@@ -66,7 +66,7 @@ export function useCloudSync() {
     try {
       const cloudMeta = await readMeta(uid)
       if (cloudMeta) {
-        useShiftStore.getState().cloudImportMeta({
+        await useShiftStore.getState().cloudImportMeta({
           settings: cloudMeta.settings,
           templates: cloudMeta.templates,
           completedShifts: cloudMeta.completedShifts
@@ -74,7 +74,7 @@ export function useCloudSync() {
       }
       const cloudDays = await readAllDays(uid)
       if (Object.keys(cloudDays).length > 0) {
-        useShiftStore.getState().cloudReplaceDays(cloudDays)
+        await useShiftStore.getState().cloudReplaceDays(cloudDays)
       }
       setLastSyncAt(Date.now())
       setStatus('synced')

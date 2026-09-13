@@ -5,6 +5,8 @@ import {
   signInWithPopup,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence,
   type Auth,
   type User
 } from 'firebase/auth'
@@ -31,6 +33,12 @@ if (isFirebaseEnabled) {
     app = initializeApp({ apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId })
     auth = getAuth(app)
     db = getFirestore(app)
+    // Keep the Google session across app restarts. The default is local
+    // persistence anyway, but making it explicit keeps it from silently flipping
+    // on some platform — without it the app would ask to re-sign-in every launch.
+    setPersistence(auth, browserLocalPersistence).catch((error) => {
+      console.warn('[cloud] auth persistence setup failed — session may not survive restart', error)
+    })
   } catch (error) {
     console.error('[cloud] Firebase init failed — cloud disabled', error)
     app = null
@@ -54,7 +62,8 @@ export async function signInWithGoogle(): Promise<User | null> {
   }
   try {
     const provider = new GoogleAuthProvider()
-    provider.setCustomParameters({ prompt: 'select_account' })
+    // No forced `prompt: 'select_account'` — with a persisted session the user
+    // signs in once and Google reuses the last selected account silently.
     const result = await signInWithPopup(auth, provider)
     return result.user
   } catch (error) {
