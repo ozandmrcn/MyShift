@@ -1019,7 +1019,7 @@ export default function Dashboard() {
                   {t('dashboardUI.undoButton')}
                 </button>
               </div>
-            ) : paybackRunning ? (
+            ) : paybackRunning && !(awaitingConfirmation && pendingActivity) ? (
               <div className="mt-4">
                 <div className="flex items-start gap-4">
                   <div className="text-5xl p-4 rounded-2xl border bg-amber-500/10 border-amber-500/30 shadow-lg shadow-amber-500/10 animate-pulse">⏳</div>
@@ -1085,6 +1085,10 @@ export default function Dashboard() {
                     <p className="mt-2">
                       <span className="text-xs text-slate-400">{t('dashboardUI.totalOvertime')}:</span>{' '}
                       <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds, false, 'sa', 'dk', true)}</span>
+                    </p>
+                    <p className="mt-1">
+                      <span className="text-xs text-emerald-300/90">{t('dashboardUI.pendingPaybackNote')}:</span>{' '}
+                      <span className="font-mono font-semibold text-emerald-300">{formatRemaining(paybackSeconds)}</span>
                     </p>
                   </div>
                 </div>

@@ -70,11 +70,12 @@ export default function Timeline() {
   }
 
   const sorted = [...activeTemplate.activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
-  // In PLANNED (Programlı) mode the engine's activity list already carries the flex
-  // adjustments: breaks whose allowance flex spent shorten (e.g. 07:30–07:45 became
-  // 07:30–07:35) and every following activity slides earlier by the same amount.
-  // Flex mode keeps the raw template (breaks stay spendable chips there).
-  const sortedDisp = mode === 'myshift' && !flexMode && activityList && activityList.length > 0 ? activityList : sorted
+  // The engine's activity list carries the mode adjustments: in PLANNED (Programlı)
+  // mode breaks whose allowance flex spent are shortened and the rest of the day
+  // slides earlier; in FLEX mode break rows are removed entirely (their windows are
+  // absorbed into the surrounding work). Breaks are spent only from the flex pool
+  // card above, which still reads the raw template.
+  const sortedDisp = mode === 'myshift' && activityList && activityList.length > 0 ? activityList : sorted
   const completedCount = sortedDisp.filter(a => (activitiesStatus[a.id] || 'future') === 'completed').length
   const breakPoolSecs = sorted.filter(a => a.isBreak).reduce((sum, a) => sum + (a.duration || 0), 0) * 60
   // Per-scheduled-break allowances — each "Mola mı?" activity owns its own minutes.

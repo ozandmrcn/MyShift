@@ -4,6 +4,10 @@ import { playSound } from '../utils/soundEffects'
 import tr from '../i18n/tr'
 import en from '../i18n/en'
 
+// Shared across all mounted useLiveShiftEngine instances: true while the current
+// payback session was auto-started to bank a work-end confirmation wait.
+let confirmPaybackStarted = false
+
 // Helper to convert HH:mm:ss to seconds of the day
 export function timeToSeconds(timeStr: string): number {
   const parts = timeStr.split(':').map(Number)
@@ -306,13 +310,12 @@ export function useLiveShiftEngine() {
     ? Object.fromEntries([...new Set([...Object.keys(flexBreakSecs), ...Object.keys(templateBreakAllowance)])].map((id) => [id, flexRemainingOf(id)]))
     : {}
 
-  // MyShift activity list. In flexible-break mode the scheduled windows stay EXACTLY
-  // the same (a break stays a 15-min row at its set time): the label "esnek" only
-  // means that break is NOT spent automatically — its slot is pooled as time you can
-  // spend whenever by pressing its chip. During a former break slot the user keeps
-  // working, so the slot is replaced by a synthetic WORK activity ("Çalışma esnek")
-  // that is never rendered — it exists so nothing counts as idle/aşım there and the
-  // shift end stays at its scheduled time. In PLANNED mode flex-session spending
+  // MyShift activity list. In flexible-break mode the scheduled break slots are
+  // SKIPPED entirely — the flow stays work → work and breaks live only in the flex
+  // pool card, never as rows here. Each removed break window is absorbed into the
+  // surrounding work activity (a break extends the preceding work's end; a leading
+  // break pulls the following work's start earlier) so there is no gap (no aşım) and
+  // the shift end stays at its scheduled time. In PLANNED mode flex-session spending
   // shortens each break's own window and slides the rest of the day earlier.
   const myShiftActList = useMemo(() => {
     if (!resolvedTemplate) return []
@@ -320,23 +323,45 @@ export function useLiveShiftEngine() {
     if (settings.mode !== 'myshift') return sorted
     if (flexOn) {
       const out: Activity[] = []
+      // End of the last skipped break (seconds of day) to absorb into the previous work.
+      let carryEnd: number | null = null
+      // Start of skipped break(s) that lead the shift (before any work row).
+      let leadStart: number | null = null
+      const extendPrevTo = (endSecs: number) => {
+        if (out.length === 0) return
+        const prev = out[out.length - 1]
+        const startSecs = timeToSeconds(`${prev.startTime}:00`)
+        const dur = (((endSecs - startSecs) % 86400) + 86400) % 86400
+        out[out.length - 1] = { ...prev, endTime: secondsToHHMM(endSecs), duration: Math.round(dur / 60) }
+      }
       for (const act of sorted) {
         if (act.isBreak) {
-          out.push({
-            ...act,
-            id: `${act.id}#flex`,
-            name: locale.timelineUI.flexWorkLabel,
-            isBreak: false,
-            flexVirtual: true,
-            icon: '💼',
-            color: 'emerald',
-            notes: undefined
-          })
+          const s = timeToSeconds(`${act.startTime}:00`)
+          const e = timeToSeconds(`${act.endTime}:00`)
+          if (out.length === 0 && leadStart === null) leadStart = s
+          carryEnd = e
           continue
+        }
+        if (out.length === 0 && leadStart !== null) {
+          // First work row: pull its start back to the first leading break.
+          const endSecs = timeToSeconds(`${act.endTime}:00`)
+          const dur = (((endSecs - leadStart) % 86400) + 86400) % 86400
+          out.push({ ...act, startTime: secondsToHHMM(leadStart), duration: Math.round(dur / 60) })
+          leadStart = null
+          carryEnd = null
+          continue
+        }
+        if (carryEnd !== null) {
+          extendPrevTo(carryEnd)
+          carryEnd = null
         }
         out.push(act)
       }
-      return out
+      // Trailing break(s): extend the last work to the last break's end.
+      if (carryEnd !== null) extendPrevTo(carryEnd)
+      // Degenerate template with no work rows at all — keep the raw list so the
+      // engine still has activities (avoids an empty shift).
+      return out.length > 0 ? out : sorted
     }
     // Planned mode: shorten each break by its flex-session spending, then push every
     // following activity earlier by the accumulated shortening. `flexUsedBy` (flex
@@ -750,6 +775,7 @@ export function useLiveShiftEngine() {
         && !inBudgetBreak
         && !isPausedToday
         && !flexNormalBreak
+        && !engineState.awaitingConfirmation
         && ((flexOverage && flexRunning) || ((!engineState.currentActivity && !engineState.isBeforeShift && !engineState.isShiftFinished) || overBudgetBreak))
     }
     updateIdle(idleNow)
@@ -766,18 +792,40 @@ export function useLiveShiftEngine() {
   }, [settings.mode, resolvedTemplate, engineState.isShiftFinished, engineState.isOvertime, engineState.isBeforeShift, runningBreak, updatePayWork])
 
   // Payback auto-finish: as soon as the paid amount reaches the owed aşım, the
-  // payback session ends on its own — it never stays open to over-pay.
+  // payback session ends on its own — it never stays open to over-pay. It is skipped
+  // while a work-end confirmation is pending: the wait is intentional extra work and
+  // must NOT complete the shift on its own.
   const finishPaybackRef = useRef(finishPayback)
   finishPaybackRef.current = finishPayback
   useEffect(() => {
     if (paybackStartTs === null) return
+    if (engineState.awaitingConfirmation) return
     const nowMs = Date.now()
     const owedMs = idleAccumMs + (idleStartTs !== null ? Math.max(0, nowMs - idleStartTs) : 0)
     const paidMs = paybackAccumMs + Math.max(0, nowMs - paybackStartTs)
     if (owedMs > 0 && paidMs >= owedMs) {
       finishPaybackRef.current()
     }
-  }, [paybackStartTs, paybackAccumMs, idleAccumMs, idleStartTs, time])
+  }, [paybackStartTs, paybackAccumMs, idleAccumMs, idleStartTs, time, engineState.awaitingConfirmation])
+
+  // Work-end confirmation counts as extra work, not aşım: while the transition into a
+  // work activity awaits the user's confirmation the clock is banked as payback (each
+  // waited second subtracts from aşım). We borrow the payback session for this, but
+  // only when the user isn't already running a payback of their own. The shared
+  // module-level flag ensures only one session is started regardless of how many
+  // components mount this hook simultaneously.
+  useEffect(() => {
+    const s = useShiftStore.getState()
+    if (engineState.awaitingConfirmation) {
+      if (!confirmPaybackStarted && s.paybackStartTs === null) {
+        startPayback()
+        confirmPaybackStarted = true
+      }
+    } else if (confirmPaybackStarted) {
+      stopPayback()
+      confirmPaybackStarted = false
+    }
+  }, [engineState.awaitingConfirmation, startPayback, stopPayback])
 
   // A flexible break that runs past its own allowance never ends on its own — it goes
   // into aşım (overtime) until the user stops it by hand. Warn once per break when
