@@ -940,8 +940,13 @@ export function useLiveShiftEngine() {
 
   // Planned-mode breaks feed the shared ledger: as the effective clock passes through
   // each (possibly flex-shortened) scheduled break window, that consumption is written
-  // into planUsedBy so a later switch to flex mode sees exactly what the plan already
-  // used. Flex mode merges break windows away, so it never writes here.
+  // into planUsedBy so the planned-mode countdown reflects exactly what the clock gave.
+  // Flex mode merges break windows away, so it never writes here — AND entering flex
+  // starts from a clean plan-ledger (enableFlex resets planUsedBy), because what the
+  // plan "gave" at its windows must not lock breaks the user never tool flexibly.
+  // This also means a kaydırma can never strand blocks as "Tükendi" — the planned
+  // sync only ever increases the ledger (Math.max), so shifting time back after it
+  // already consumed a window makes it permanently spent otherwise.
   const syncFlexUsedFromPlan = useShiftStore((state) => state.syncFlexUsedFromPlan)
   const lastPlanWrite = useRef(0)
   useEffect(() => {

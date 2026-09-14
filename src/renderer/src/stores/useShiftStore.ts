@@ -653,7 +653,9 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           flexUsedSecs: sameDay ? savedIdle.flexUsedSecs ?? 0 : 0,
           flexBreakSecs: sameDay ? savedIdle.flexBreakSecs ?? {} : {},
           flexUsedBy: sameDay ? savedIdle.flexUsedBy ?? {} : {},
-          planUsedBy: sameDay ? savedIdle.planUsedBy ?? {} : {},
+          // Flex owns its pool: restoring flex ON for today starts with a clean
+          // plan-ledger (see enableFlex). Only real flex spending is kept.
+          planUsedBy: sameDay ? (savedIdle.flexMode === true ? {} : savedIdle.planUsedBy ?? {}) : {},
           flexActiveId: null,
           flexDay: todayStr,
           // Never restore a "running" flex break — a break running while the app was
@@ -718,7 +720,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           flexUsedSecs: bSameDay ? idleParsed.flexUsedSecs ?? 0 : 0,
           flexBreakSecs: bSameDay ? idleParsed.flexBreakSecs ?? {} : {},
           flexUsedBy: bSameDay ? idleParsed.flexUsedBy ?? {} : {},
-          planUsedBy: bSameDay ? idleParsed.planUsedBy ?? {} : {},
+          planUsedBy: bSameDay ? (idleParsed.flexMode === true ? {} : idleParsed.planUsedBy ?? {}) : {},
           flexActiveId: bSameDay ? idleParsed.flexActiveId ?? null : null,
           flexDay: bToday,
           flexRunningMs: bSameDay ? idleParsed.flexRunningMs ?? null : null,
@@ -1104,9 +1106,14 @@ const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
       flexUsedBy: keepUsage && byId
         ? Object.fromEntries(Object.entries(s.flexUsedBy).filter(([k]) => k in byId))
         : {},
-      planUsedBy: byId
-        ? Object.fromEntries(Object.entries(s.planUsedBy).filter(([k]) => k in byId))
-        : s.planUsedBy,
+      // Flex mode owns its pool: the plan's clock-consumption ledger does NOT carry
+      // over. While planned, the clock "gave" each break automatically at its window —
+      // but the moment the user picks Esnek that consumption is void, otherwise every
+      // break whose scheduled window already passed would show "Tükendi" even though
+      // no flexible break was ever taken (and a later kaydırma can't shift it back,
+      // because the planned sync only ever grows the ledger). Only real flex spending
+      // (flexUsedBy) stays counted against the pool.
+      planUsedBy: {},
       flexActiveId: null,
       flexDay: day,
       flexRunningMs: null,
