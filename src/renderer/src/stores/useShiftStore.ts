@@ -1100,7 +1100,11 @@ const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
     const pool = Math.max(0, Math.round(totalPoolSecs))
     let flexUsedBy: Record<string, number> = {}
     if (keepUsage && byId) {
-      flexUsedBy = Object.fromEntries(Object.entries(s.flexUsedBy).filter(([k]) => k in byId))
+      // Same day re-enable: keep what's already spent, but also absorb any
+      // breaks that passed in PLAN mode while flex was off (rebuilt planUsedBy
+      // is captured in carriedSpent by the caller). Cap each by allowance so a
+      // kaydırma going back can never exceed the scheduled total.
+      flexUsedBy = Object.fromEntries(Object.entries({ ...s.flexUsedBy, ...(carriedSpent ?? {}) }).filter(([k]) => k in byId))
     } else if (byId && carriedSpent) {
       // Mid-day planned → flex switch: breaks whose windows ALREADY finished while in
       // Programlı were consumed by the plan clock (they ran automatically), so those
@@ -1229,7 +1233,10 @@ const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
   syncFlexUsedFromPlan: (usedBy) => {
     const s = get()
     const day = todayStr()
-    if (s.flexDay !== day) return
+    // Write plan consumption whether flex ran today or not:
+    // if the user switches from PLAN to FLEX later, the carried spend must be accurate.
+    // (Flex mode's own consumption is tracked separately via flexStart/FlexStop,
+    // this is for the carrot when a planned window passed and later flex runs.)
     const merged = { ...s.planUsedBy }
     let changed = false
     for (const [k, v] of Object.entries(usedBy)) {

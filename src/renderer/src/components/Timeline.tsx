@@ -84,15 +84,15 @@ export default function Timeline() {
     if (a.isBreak) breakPoolByBreakId[a.id] = Math.max(0, (a.duration || 0) * 60)
   }
 
-  // Breaks whose scheduled window already fully finished in PLANNED mode were consumed
-  // by the plan clock (they ran automatically) — carry that spent time into the flex
-  // pool so a mid-day switch to Esnek doesn't refund breaks the plan already gave.
-  // Only genuinely finished windows are carried; future breaks keep their allowance.
+  // Breaks already consumed while in PLANNED mode are carried into the flex pool, so a
+  // mid-day switch to Esnek doesn't refund breaks the plan clock already gave. Every
+  // break the clock has touched is included — fully finished windows carry their whole
+  // allowance, a break you're currently ON carries just the minutes already elapsed.
   const planSpentCarry: Record<string, number> = {}
   for (const a of sorted) {
     if (!a.isBreak) continue
     const spent = planUsedBy[a.id] ?? 0
-    if (spent > 0 && (activitiesStatus[a.id] || 'future') === 'completed') {
+    if (spent > 0) {
       planSpentCarry[a.id] = Math.min((a.duration || 0) * 60, spent)
     }
   }
