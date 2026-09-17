@@ -84,6 +84,19 @@ export default function Timeline() {
     if (a.isBreak) breakPoolByBreakId[a.id] = Math.max(0, (a.duration || 0) * 60)
   }
 
+  // Breaks whose scheduled window already fully finished in PLANNED mode were consumed
+  // by the plan clock (they ran automatically) — carry that spent time into the flex
+  // pool so a mid-day switch to Esnek doesn't refund breaks the plan already gave.
+  // Only genuinely finished windows are carried; future breaks keep their allowance.
+  const planSpentCarry: Record<string, number> = {}
+  for (const a of sorted) {
+    if (!a.isBreak) continue
+    const spent = planUsedBy[a.id] ?? 0
+    if (spent > 0 && (activitiesStatus[a.id] || 'future') === 'completed') {
+      planSpentCarry[a.id] = Math.min((a.duration || 0) * 60, spent)
+    }
+  }
+
   // After a late start / pause the whole schedule moves forward: reflect the NEW
   // times here so "where am I / what's next" stays truthful at a glance.
   const shiftFactor = activeShiftSecs > 0 ? activeShiftSecs : 0
@@ -138,7 +151,7 @@ export default function Timeline() {
               {t('timelineUI.breakModePlanned')}
             </button>
             <button
-              onClick={() => enableFlex(breakPoolSecs, breakPoolByBreakId)}
+              onClick={() => enableFlex(breakPoolSecs, breakPoolByBreakId, planSpentCarry)}
               disabled={flexMode || isPaused || isShiftFinished}
               title={breakPoolSecs === 0 ? t('timelineUI.flexNoBreaks') : undefined}
               className={`flex-1 px-3 py-1.5 rounded-md transition-colors ${

@@ -565,12 +565,12 @@ export function useLiveShiftEngine() {
     } else {
       // We are inside the shift duration.
       //
-      // Confirmation gate (MyShift templates): every WORK activity after the first
-      // one only becomes current once the user confirms the transition into it.
-      // Until then currentActivity stays null and the elapsed time counts as aşım
-      // (idle). Breaks ("Mola mı?") are fully automatic — they start and end on
-      // their schedule without confirmation, so a break that runs long falls into
-      // the pending gate of the work activity that follows it.
+      // Confirmation gate (MyShift templates): every activity after the first one
+      // (WORK and "Mola mı?" alike) only becomes current once the user confirms the
+      // transition into it. Until then currentActivity stays null and the wait is
+      // handled downstream: coming FROM a break it counts as aşım (a real gap);
+      // coming FROM a work (waiting to enter a break, or work→work in flex) the user
+      // is still working, so it is banked as payback instead of aşım.
       const confirmedSet = new Set(confirmedActivities)
       let previousEnded: Activity | null = null
 
@@ -598,7 +598,7 @@ export function useLiveShiftEngine() {
 
         if (actNotStarted) {
           nextActivity = act
-          if (!act.isBreak && !act.flexVirtual && i > 0 && !confirmedSet.has(act.id)) {
+          if (settings.mode === 'myshift' && !act.flexVirtual && i > 0 && !confirmedSet.has(act.id)) {
             pendingActivity = act
             pendingAfter = previousEnded
           }
@@ -606,9 +606,7 @@ export function useLiveShiftEngine() {
         }
 
         // currentSecs is inside this activity's window.
-        if (act.isBreak) {
-          currentActivity = act
-        } else if (i === 0 || confirmedSet.has(act.id) || act.flexVirtual) {
+        if (settings.mode !== 'myshift' || i === 0 || confirmedSet.has(act.id) || act.flexVirtual) {
           currentActivity = act
         } else {
           pendingActivity = act
@@ -771,11 +769,16 @@ export function useLiveShiftEngine() {
       // accrues. A flexible break that ran past its own allowance IS idle: aşım
       // (overtime) accrues until the user ends the break by hand.
       const flexNormalBreak = flexRunning && !flexOverage
+      // A pending confirmation counts as aşım ONLY when the user is waiting on a
+      // transition that came FROM a break (a real gap in the day). Waiting after a
+      // work ended (into a break, or work→work in flex) means the user is still
+      // working — that wait is banked as payback and must NOT accrue aşım here.
+      const pendingFromWork = engineState.awaitingConfirmation && !!engineState.pendingAfter && !engineState.pendingAfter.isBreak
       idleNow = !!resolvedTemplate && resolvedTemplate.activities.length > 0
         && !inBudgetBreak
         && !isPausedToday
         && !flexNormalBreak
-        && !engineState.awaitingConfirmation
+        && !pendingFromWork
         && ((flexOverage && flexRunning) || ((!engineState.currentActivity && !engineState.isBeforeShift && !engineState.isShiftFinished) || overBudgetBreak))
     }
     updateIdle(idleNow)
@@ -808,15 +811,17 @@ export function useLiveShiftEngine() {
     }
   }, [paybackStartTs, paybackAccumMs, idleAccumMs, idleStartTs, time, engineState.awaitingConfirmation])
 
-  // Work-end confirmation counts as extra work, not aşım: while the transition into a
-  // work activity awaits the user's confirmation the clock is banked as payback (each
-  // waited second subtracts from aşım). We borrow the payback session for this, but
-  // only when the user isn't already running a payback of their own. The shared
-  // module-level flag ensures only one session is started regardless of how many
-  // components mount this hook simultaneously.
+  // Work-end confirmation counts as extra work, not aşım: while the transition away
+  // from a WORK activity (-"into a break", or work→work in flex) awaits the user's
+  // confirmation the clock is banked as payback (each waited second subtracts from
+  // aşım). A confirmation that FOLLOWS a break is a real gap — normal aşım, no
+  // payback session. We borrow the payback session for this, but only when the user
+  // isn't already running a payback of their own. The shared module-level flag ensures
+  // only one session is started regardless of how many components mount this hook.
   useEffect(() => {
     const s = useShiftStore.getState()
-    if (engineState.awaitingConfirmation) {
+    const pendingFromWork = engineState.awaitingConfirmation && !!engineState.pendingAfter && !engineState.pendingAfter.isBreak
+    if (pendingFromWork) {
       if (!confirmPaybackStarted && s.paybackStartTs === null) {
         startPayback()
         confirmPaybackStarted = true
@@ -825,7 +830,7 @@ export function useLiveShiftEngine() {
       stopPayback()
       confirmPaybackStarted = false
     }
-  }, [engineState.awaitingConfirmation, startPayback, stopPayback])
+  }, [engineState.awaitingConfirmation, engineState.pendingAfter, startPayback, stopPayback])
 
   // A flexible break that runs past its own allowance never ends on its own — it goes
   // into aşım (overtime) until the user stops it by hand. Warn once per break when

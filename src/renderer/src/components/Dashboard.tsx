@@ -1086,10 +1086,12 @@ export default function Dashboard() {
                       <span className="text-xs text-slate-400">{t('dashboardUI.totalOvertime')}:</span>{' '}
                       <span className="font-mono font-bold text-amber-300 text-lg">{formatRemaining(idleSeconds, false, 'sa', 'dk', true)}</span>
                     </p>
-                    <p className="mt-1">
-                      <span className="text-xs text-emerald-300/90">{t('dashboardUI.pendingPaybackNote')}:</span>{' '}
-                      <span className="font-mono font-semibold text-emerald-300">{formatRemaining(paybackSeconds)}</span>
-                    </p>
+                    {pendingAfter && !pendingAfter.isBreak && (
+                      <p className="mt-1">
+                        <span className="text-xs text-emerald-300/90">{t('dashboardUI.pendingPaybackNote')}:</span>{' '}
+                        <span className="font-mono font-semibold text-emerald-300">{formatRemaining(paybackSeconds)}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="mt-4 flex justify-end">

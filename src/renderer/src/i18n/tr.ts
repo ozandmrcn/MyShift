@@ -1053,7 +1053,7 @@ const tr = {
     btnGoToNext: '▶ Sıradaki Aktiviteye Geç',
     btnGoToNextTitle: 'Saat sıradaki aktivitenin başlangıcına atlar: bu aktiviteyi atlayıp oradan devam edilir.',
     pendingTitle: 'Onay Bekliyor',
-    pendingBreakDesc: 'Mola bitti. Sıradaki etkinliğe geçmek için onayınız gerekiyor — bekleme süresi fazla çalışma (payback) sayılıyor, aşım artmaz.',
+    pendingBreakDesc: 'Mola bitti. Sıradaki etkinliğe geçmek için onayınız gerekiyor — onaylayana kadar geçen süre aşım olarak sayılıyor.',
     pendingActivityDesc: 'Etkinlik bitti. Sıradaki etkinliğe geçmek için onayınız gerekiyor — bekleme süresi fazla çalışma (payback) sayılıyor, aşım artmaz.',
     pendingNext: 'Sıradaki',
     pendingStartsAt: 'de başlamalı',
