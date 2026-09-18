@@ -18,10 +18,6 @@ export interface Activity {
   // "Mola mı?" — when ticked this activity is a break (logged as break time,
   // never counted as working time).
   isBreak?: boolean
-  // Engine-internal: a SYNTHETIC work activity that stands in for a scheduled break
-  // slot while flex mode is on (the slot is pooled, so it reads as camera-on working,
-  // never as a break that "happens" on its own schedule). Never rendered in the list.
-  flexVirtual?: boolean
 }
 
 // Pay-mode break categories (the two budgets the user configures in Settings).
@@ -132,8 +128,6 @@ export interface DayLogDetail {
   idleLog: TimeSpanLog[]
   paybackLog: TimeSpanLog[]
   confirmedActivities: string[]
-  flexUsedSecs?: number
-  flexRemainingSecs?: number
 }
 
 // A finished pay-mode break — the detailed "Bugünün Özeti" log. `overBudget`
@@ -191,25 +185,16 @@ interface ShiftStore {
   myshiftPaused: boolean // day paused — effective time frozen (no aşım, no cuts)
   pauseWallAt: number | null // Date.now() when the pause began (live elapsed growth)
 
-  // MyShift flexible breaks (per-day) — scheduled "Mola mı?" minutes are pooled and
-  // can be spent whenever the user wants via an explicit break session. Pool minutes
-  // are broken down per scheduled break activity (`flexBreakSecs`), so each break is
-  // tracked & spent individually; `flexActiveId` is the break currently running.
-  flexMode: boolean
-  flexTotalSecs: number // initial pool (sum of scheduled break minutes)
-  flexUsedSecs: number // seconds already consumed from the pool
-  flexBreakSecs: Record<string, number> // per-activity allowance (activity id -> seconds)
-  flexUsedBy: Record<string, number> // per-activity seconds consumed from FLEX sessions
-  planUsedBy: Record<string, number> // per-activity seconds consumed from PLANNED (scheduled) breaks
-  flexActiveId: string | null // the scheduled break activity currently running (null = none)
-  flexDay: string // "YYYY-MM-DD" the pool belongs to (daily auto-reset)
-  flexRunningMs: number | null // Date.now() while a flexible break runs (null = none)
-  flexFrozenEff: number // effective seconds-of-day at flex break start
+  // MyShift planned breaks — per-activity seconds consumed by the scheduled break
+  // clock. Each "Mola mı?" window auto-consumes as the effective clock passes through
+  // it (no manual toggle): following the plan marks a break as spent for the day.
+  planUsedBy: Record<string, number>
 
   // Set by the engine once the day's schedule has run past its last activity WITHOUT
   // the user completing it ("aşım"). A later kaydırma on such a day must renew the
   // break ledger just like it does for a manually completed day.
   scheduleElapsedToday: boolean
+  payShiftOffset: number // seconds offset applied to Pay mode's window start/end (manual shift in Pay mode)
 
   // Day's GROSS aşım log — keeps accruing, is never reduced by payback or by resetIdle,
   // and resets only at the day change. It exists purely to record how much aşım was
@@ -280,11 +265,9 @@ interface ShiftStore {
   setDayShift: (secs: number) => void
   pauseDay: () => void
   resumeDay: () => void
-  enableFlex: (totalPoolSecs: number, byId?: Record<string, number>, carriedSpent?: Record<string, number>) => void
-  disableFlex: () => void
-  flexStartBreak: (breakId: string, freezeEff: number) => void
-  flexStopBreak: () => void
-  syncFlexUsedFromPlan: (usedBy: Record<string, number>) => void
+  shiftToActivity: (activityId: string, activities: Activity[]) => void
+  setPayShiftOffset: (offset: number) => void
+  syncPlanUsed: (usedBy: Record<string, number>) => void
   markScheduleElapsed: (elapsed: boolean) => void
   updateIdle: (isIdleNow: boolean) => void
   resetIdle: () => void
@@ -352,38 +335,9 @@ const defaultSettings: Settings = {
   debugMode: false,
 }
 
-// Today's date as "YYYY-MM-DD" — used by the per-day guards of the shift / flex state
+// Today's date as "YYYY-MM-DD" — used by the per-day guards of the shift state
 function todayStr(d = new Date()): string {
   return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
-}
-
-// Rebuild the flexible-break pool from today's active template — used whenever a
-// finished / aşım day is re-opened (kaydırma or uncomplete). The renewed day must
-// come with a fresh, full break ledger so the chips stay clickable instead of
-// silently flipping to "tükendi".
-function rebuildFlexPool(templates: readonly ShiftTemplate[], settingsBirthday?: string, now = new Date()): { pool: number; byId: Record<string, number> } {
-  const day = todayStr(now)
-  const dow = now.getDay()
-  const mmdd = day.substring(5)
-  const activeTemplates = (templates ?? []).filter((t) => t.isActive && t.activities.length > 0)
-  // Birthday templates only win over the weekday pick when today IS the birthday —
-  // this mirrors the engine's active-template resolution exactly.
-  const birthday = settingsBirthday === mmdd
-    ? activeTemplates.find((t) => String(t.name ?? '').toLowerCase().includes('doğum') || String(t.name ?? '').toLowerCase().includes('birthday'))
-    : undefined
-  const dateMatch = activeTemplates.find((t) => t.customDates?.includes(day))
-  const weekdayMatch = activeTemplates.find((t) => t.weekdays.includes(dow))
-  const tmpl = (birthday ?? dateMatch) ?? weekdayMatch
-  if (!tmpl) return { pool: 0, byId: {} }
-  const byId: Record<string, number> = {}
-  let pool = 0
-  for (const act of tmpl.activities) {
-    if (!act.isBreak) continue
-    const secs = Math.max(0, calculateDuration(act.startTime, act.endTime) * 60)
-    byId[act.id] = secs
-    pool += secs
-  }
-  return { pool, byId }
 }
 
 // Helper to calculate duration in minutes between HH:mm and HH:mm
@@ -425,16 +379,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
       shiftDay: s.shiftDay,
       myshiftPaused: s.myshiftPaused,
       pauseWallAt: s.pauseWallAt,
-      flexMode: s.flexMode,
-      flexTotalSecs: s.flexTotalSecs,
-      flexUsedSecs: s.flexUsedSecs,
-      flexBreakSecs: s.flexBreakSecs,
-      flexUsedBy: s.flexUsedBy,
-      planUsedBy: s.planUsedBy,
-      flexActiveId: s.flexActiveId,
-      flexDay: s.flexDay,
-      flexRunningMs: s.flexRunningMs,
-      flexFrozenEff: s.flexFrozenEff
+      planUsedBy: s.planUsedBy
     }
     const api = window.electronAPI
     if (api && api.store) {
@@ -488,16 +433,8 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
   shiftDay: '',
   myshiftPaused: false,
   pauseWallAt: null,
-  flexMode: false,
-  flexTotalSecs: 0,
-  flexUsedSecs: 0,
-  flexBreakSecs: {},
-  flexUsedBy: {},
   planUsedBy: {},
-  flexActiveId: null,
-  flexDay: '',
-  flexRunningMs: null,
-  flexFrozenEff: 0,
+  payShiftOffset: 0,
   scheduleElapsedToday: false,
   confirmedActivities: [],
   idleAccumMs: 0,
@@ -580,16 +517,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           shiftDay?: string
           myshiftPaused?: boolean
           pauseWallAt?: number | null
-          flexMode?: boolean
-          flexTotalSecs?: number
-          flexUsedSecs?: number
-          flexBreakSecs?: Record<string, number>
-          flexUsedBy?: Record<string, number>
           planUsedBy?: Record<string, number>
-          flexActiveId?: string | null
-          flexDay?: string
-          flexRunningMs?: number | null
-          flexFrozenEff?: number
         } | null
 
         const savedDayLogs = (await api.store.get('dailyLogs', {})) as Record<string, DayLog>
@@ -648,21 +576,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           shiftDay: todayStr,
           myshiftPaused: sameDay ? savedIdle.myshiftPaused ?? false : false,
           pauseWallAt: sameDay ? savedIdle.pauseWallAt ?? null : null,
-          flexMode: sameDay ? savedIdle.flexMode ?? false : false,
-          flexTotalSecs: sameDay ? savedIdle.flexTotalSecs ?? 0 : 0,
-          flexUsedSecs: sameDay ? savedIdle.flexUsedSecs ?? 0 : 0,
-          flexBreakSecs: sameDay ? savedIdle.flexBreakSecs ?? {} : {},
-          flexUsedBy: sameDay ? savedIdle.flexUsedBy ?? {} : {},
-          // Flex owns its pool: restoring flex ON for today starts with a clean
-          // plan-ledger (see enableFlex). Only real flex spending is kept.
-          planUsedBy: sameDay ? (savedIdle.flexMode === true ? {} : savedIdle.planUsedBy ?? {}) : {},
-          flexActiveId: null,
-          flexDay: todayStr,
-          // Never restore a "running" flex break — a break running while the app was
-          // closed can't tick anyway, and a stale marker silently blocked EVERY other
-          // break chip after a restart (flexStartBreak bails while flexRunningMs != null).
-          flexRunningMs: null,
-          flexFrozenEff: 0,
+          planUsedBy: sameDay ? savedIdle.planUsedBy ?? {} : {},
           runningBreak: breakSameDay ? savedBreak.runningBreak ?? null : null,
           breakDay: todayStr,
           breakUsage: breakSameDay ? savedBreak.breakUsage ?? {} : {},
@@ -715,16 +629,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
           shiftDay: bToday,
           myshiftPaused: bSameDay ? idleParsed.myshiftPaused ?? false : false,
           pauseWallAt: bSameDay ? idleParsed.pauseWallAt ?? null : null,
-          flexMode: bSameDay ? idleParsed.flexMode ?? false : false,
-          flexTotalSecs: bSameDay ? idleParsed.flexTotalSecs ?? 0 : 0,
-          flexUsedSecs: bSameDay ? idleParsed.flexUsedSecs ?? 0 : 0,
-          flexBreakSecs: bSameDay ? idleParsed.flexBreakSecs ?? {} : {},
-          flexUsedBy: bSameDay ? idleParsed.flexUsedBy ?? {} : {},
-          planUsedBy: bSameDay ? (idleParsed.flexMode === true ? {} : idleParsed.planUsedBy ?? {}) : {},
-          flexActiveId: bSameDay ? idleParsed.flexActiveId ?? null : null,
-          flexDay: bToday,
-          flexRunningMs: bSameDay ? idleParsed.flexRunningMs ?? null : null,
-          flexFrozenEff: bSameDay ? idleParsed.flexFrozenEff ?? 0 : 0,
+          planUsedBy: bSameDay ? idleParsed.planUsedBy ?? {} : {},
           runningBreak: bBreakSameDay ? breakParsed.runningBreak ?? null : null,
           breakDay: bToday,
           breakUsage: bBreakSameDay ? breakParsed.breakUsage ?? {} : {},
@@ -982,22 +887,12 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     const s = get()
     const { completedShifts } = s
     const newCompleted = completedShifts.filter((d) => d !== dateStr)
-    // Re-opening a finished day renews its break allowances — the flex/planned ledger
-    // starts fresh so the continued shift keeps the scheduled breaks usable, and the
-    // flex mode the user picked stays active (chips clickable right away).
-    const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
+    // Re-opening a finished day renews its break allowances — the planned ledger
+    // starts fresh so the continued shift keeps the scheduled breaks usable.
     set({
       completedShifts: newCompleted,
       confirmedActivities: [],
-      flexMode: s.flexMode,
-      flexTotalSecs: pool,
-      flexUsedSecs: 0,
-      flexBreakSecs: byId,
-      flexUsedBy: {},
       planUsedBy: {},
-      flexActiveId: null,
-      flexRunningMs: null,
-      flexFrozenEff: 0,
       scheduleElapsedToday: false
     })
     get().updateDayLog(dateStr, { completed: false })
@@ -1015,7 +910,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     set({ timeOffset: offset })
   },
 
-  // MyShift "kaydırma" — a standing shift (see dayShiftSecs). Passing 0 clears it.
+// MyShift "kaydırma" — a standing shift (see dayShiftSecs). Passing 0 clears it.
   // When the day was already finished (completed OR its schedule ran out into aşım),
   // kaydırma re-opens the schedule — the break ledger starts fresh so breaks are
   // usable again instead of staying "tükendi" from the finished day.
@@ -1027,21 +922,10 @@ export const useShiftStore = create<ShiftStore>((set, get) => {
     // user keeps the day going — the break ledger starts fresh so breaks stay usable.
     const done = s.completedShifts.includes(day) || (s.dailyLogs[day]?.completed ?? false) || s.scheduleElapsedToday
     if (secs > 0 && done) {
-      // A kaydırma re-opens the finished day: the break ledger starts FRESH (never
-      // "tükendi" from the finished day) and the flex mode the user picked stays on —
-      // the chips are immediately spendable again.
-const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
+      // A kaydırma re-opens the finished day: the planned break ledger starts FRESH
+      // (never "tükendi" from the finished day).
       set({
-        flexMode: s.flexMode,
-        flexTotalSecs: pool,
-        flexUsedSecs: 0,
-        flexBreakSecs: byId,
-        flexUsedBy: {},
         planUsedBy: {},
-        flexActiveId: null,
-        flexDay: day,
-        flexRunningMs: null,
-        flexFrozenEff: 0,
         scheduleElapsedToday: false
       })
       const newCompleted = s.completedShifts.filter(d => d !== day)
@@ -1087,152 +971,34 @@ const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
     persistIdle()
   },
 
-  // Flexible breaks: pool today's scheduled break minutes and spend them freely.
-  // Each scheduled "Mola mı?" activity gets its own allowance (`byId`), so the user
-  // spends breaks individually and a break can never take time away from another one.
-  enableFlex: (totalPoolSecs, byId, carriedSpent) => {
+  // MyShift manual "⇄" jump — shift the day so the selected activity becomes the
+  // currently running one. The standing shift is recomputed so effective time
+  // lands exactly at the activity's start; any breaks whose windows we jumped past
+  // get consumed by the engine's plan-ledger sync right after (their windows now
+  // lie behind us).
+  shiftToActivity: (activityId, activities) => {
     const s = get()
+    const targetAct = (activities ?? []).find((a) => a.id === activityId)
+    if (!targetAct) return
+    const [h, m] = targetAct.startTime.split(':').map(Number)
+    const targetSecs = h * 3600 + m * 60
+    const now = new Date()
+    const realSecs = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+    const pauseSecs = s.myshiftPaused && s.pauseWallAt !== null ? (now.getTime() - s.pauseWallAt) / 1000 : 0
     const day = todayStr()
-    // Re-enabling flex mode for the SAME day keeps what was already spent — only
-    // a fresh day (or the very first enable) starts the pool from zero. Switching
-    // to the plan and back must not wipe the used minutes.
-    const keepUsage = s.flexDay === day && s.flexTotalSecs > 0
-    const pool = Math.max(0, Math.round(totalPoolSecs))
-    let flexUsedBy: Record<string, number> = {}
-    if (keepUsage && byId) {
-      // Same day re-enable: keep what's already spent, but also absorb any
-      // breaks that passed in PLAN mode while flex was off (rebuilt planUsedBy
-      // is captured in carriedSpent by the caller). Cap each by allowance so a
-      // kaydırma going back can never exceed the scheduled total.
-      flexUsedBy = Object.fromEntries(Object.entries({ ...s.flexUsedBy, ...(carriedSpent ?? {}) }).filter(([k]) => k in byId))
-    } else if (byId && carriedSpent) {
-      // Mid-day planned → flex switch: breaks whose windows ALREADY finished while in
-      // Programlı were consumed by the plan clock (they ran automatically), so those
-      // minutes stay spent in flex. Only finished windows are carried (precomputed by
-      // the caller) — future breaks keep their full allowance.
-      flexUsedBy = Object.fromEntries(Object.entries(carriedSpent).filter(([k]) => k in byId))
-    }
-    const used = Object.values(flexUsedBy).reduce((a, b) => a + b, 0)
+    const newDayShift = Math.max(0, realSecs + s.timeOffset - pauseSecs - targetSecs)
     set({
-      flexMode: true,
-      flexTotalSecs: pool,
-      flexUsedSecs: keepUsage ? Math.min(pool, s.flexUsedSecs) : Math.min(pool, used),
-      flexBreakSecs: byId ?? {},
-      flexUsedBy,
-      // Flex mode owns its pool: the plan's clock-consumption ledger does NOT carry
-      // over. While planned, the clock "gave" each break automatically at its window —
-      // but the moment the user picks Esnek that consumption is void, otherwise every
-      // break whose scheduled window already passed would show "Tükendi" even though
-      // no flexible break was ever taken (and a later kaydırma can't shift it back,
-      // because the planned sync only ever grows the ledger). Only real flex spending
-      // (flexUsedBy, including any carried planned consumption) stays counted.
-      planUsedBy: {},
-      flexActiveId: null,
-      flexDay: day,
-      flexRunningMs: null,
-      flexFrozenEff: 0
+      dayShiftSecs: newDayShift,
+      shiftDay: s.shiftDay === day ? s.shiftDay : day,
+      myshiftPaused: false,
+      pauseWallAt: null,
+      scheduleElapsedToday: false
     })
     persistIdle()
   },
 
-  disableFlex: () => {
+  syncPlanUsed: (usedBy) => {
     const s = get()
-    const day = todayStr()
-    if (s.flexRunningMs !== null) {
-      const elapsed = Math.max(0, Math.round((Date.now() - s.flexRunningMs) / 1000))
-      const target = s.flexActiveId
-      let usedBy = s.flexUsedBy
-      let pausedDelta = 0
-      if (target) {
-        const own = s.flexBreakSecs[target] ?? s.flexTotalSecs
-        const cap = Math.max(0, own - (s.planUsedBy[target] ?? 0))
-        const prevUsed = s.flexUsedBy[target] ?? 0
-        const consumed = Math.min(cap, prevUsed + elapsed)
-        usedBy = { ...usedBy, [target]: consumed }
-        pausedDelta = Math.max(0, consumed - prevUsed)
-      }
-      const used = Object.values(usedBy).reduce((a, b) => a + b, 0)
-      set({
-        flexMode: false,
-        flexUsedSecs: Math.min(s.flexTotalSecs, used),
-        flexUsedBy: usedBy,
-        flexActiveId: null,
-        flexRunningMs: null,
-        flexFrozenEff: 0,
-        dayShiftSecs: s.dayShiftSecs + pausedDelta,
-        shiftDay: s.shiftDay === day ? s.shiftDay : day
-      })
-    } else {
-      set({ flexMode: false, flexRunningMs: null, flexActiveId: null, flexFrozenEff: 0 })
-    }
-    persistIdle()
-  },
-
-  flexStartBreak: (breakId, freezeEff) => {
-    const s = get()
-    if (s.myshiftPaused) return
-    const day = todayStr()
-    if (s.flexDay !== day) {
-      set({ flexMode: false, flexTotalSecs: 0, flexUsedSecs: 0, flexBreakSecs: {}, flexUsedBy: {}, planUsedBy: {}, flexActiveId: null, flexDay: day, flexRunningMs: null, flexFrozenEff: 0 })
-      persistIdle()
-      return
-    }
-    // A "running" break with no active id is a stale marker from a terminated session —
-    // clear it and keep going so THIS press actually starts the break instead of only
-    // silently un-sticking the state for the next one. A genuinely running break can
-    // only be ended from its own row (⏹).
-    if (s.flexRunningMs !== null) {
-      if (s.flexActiveId !== null) return
-      set({ flexRunningMs: null, flexFrozenEff: 0 })
-    }
-    const own = s.flexBreakSecs[breakId] ?? s.flexTotalSecs
-    const usedNow = (s.flexUsedBy[breakId] ?? 0) + (s.planUsedBy[breakId] ?? 0)
-    // A break may be paused and resumed later — only the minutes already spent
-    // (flex OR planned) are consumed, so a partially used break stays restorable
-    // ("kullanılan kadar biter"). Only a fully spent break is locked for the day.
-    const remaining = own - usedNow
-    if (remaining <= 0) return
-    set({ flexRunningMs: Date.now(), flexActiveId: breakId, flexFrozenEff: Math.max(0, Math.round(freezeEff)) })
-    persistIdle()
-  },
-
-  flexStopBreak: () => {
-    const s = get()
-    const day = todayStr()
-    if (s.flexRunningMs === null) return
-    if (s.flexActiveId === null) {
-      set({ flexRunningMs: null, flexFrozenEff: 0 })
-      persistIdle()
-      return
-    }
-    const elapsed = Math.max(0, Math.round((Date.now() - s.flexRunningMs) / 1000))
-    const target = s.flexActiveId
-    const own = s.flexBreakSecs[target] ?? s.flexTotalSecs
-    const cap = Math.max(0, own - (s.planUsedBy[target] ?? 0))
-    const prevUsed = s.flexUsedBy[target] ?? 0
-    const consumed = Math.min(cap, prevUsed + elapsed)
-    // The working day was frozen while this break ran (within its allowance). Bank
-    // exactly the minutes THIS session added into the standing shift so the day truly
-    // resumes where it paused — a flexible break pauses the schedule instead of just
-    // freezing the display while the real clock keeps running past it.
-    const pauseDelta = Math.max(0, consumed - prevUsed)
-    const usedBy = { ...s.flexUsedBy, [target]: consumed }
-    const used = Object.values(usedBy).reduce((a, b) => a + b, 0)
-    set({
-      flexUsedSecs: Math.min(s.flexTotalSecs, used),
-      flexUsedBy: usedBy,
-      flexActiveId: null,
-      flexRunningMs: null,
-      flexFrozenEff: 0,
-      dayShiftSecs: s.dayShiftSecs + pauseDelta,
-      shiftDay: s.shiftDay === day ? s.shiftDay : day
-    })
-    persistIdle()
-  },
-
-  syncFlexUsedFromPlan: (usedBy) => {
-    const s = get()
-    const day = todayStr()
     const keys = Object.keys(usedBy)
     // When no breaks have been touched by the plan clock (map empty), clear any
     // leftover consumption from a previous session/day so a fresh shift never
@@ -1273,6 +1039,11 @@ const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
     if (confirmedActivities.includes(activityId)) return
     set({ confirmedActivities: [...confirmedActivities, activityId] })
     persistToday()
+  },
+
+  setPayShiftOffset: (offset: number) => {
+    set({ payShiftOffset: offset })
+    persistIdle()
   },
 
   updateIdle: (isIdleNow) => {
@@ -1525,16 +1296,7 @@ const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
       shiftDay: day,
       myshiftPaused: false,
       pauseWallAt: null,
-      flexMode: false,
-      flexTotalSecs: 0,
-      flexUsedSecs: 0,
-      flexBreakSecs: {},
-      flexUsedBy: {},
       planUsedBy: {},
-      flexActiveId: null,
-      flexDay: day,
-      flexRunningMs: null,
-      flexFrozenEff: 0
     })
     persistIdle()
     persistBreak()

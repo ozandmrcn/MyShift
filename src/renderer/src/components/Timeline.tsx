@@ -24,22 +24,12 @@ export default function Timeline() {
     paybackRunning,
     currentDateStr,
     effectiveTime,
-    effectiveSecs,
     activeShiftSecs,
-    flexMode,
-    flexTotalSecs,
-    flexUsedSecs,
-    flexRemainingSecs,
-    flexRemainingMap,
-    flexUsedBy,
     planUsedBy,
-    flexActiveId,
-    flexOverage,
-    flexRunning,
-    isPaused
+    planRemainingMap
   } = useLiveShiftEngine()
   const mode = useShiftStore((s) => s.settings.mode)
-  const { uncompleteShift, startPayback, stopPayback, finishPayback, enableFlex, disableFlex, flexStartBreak, flexStopBreak } = useShiftStore()
+  const { uncompleteShift, startPayback, stopPayback, finishPayback } = useShiftStore()
   const { t } = useT()
   const activeItemRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -70,32 +60,10 @@ export default function Timeline() {
   }
 
   const sorted = [...activeTemplate.activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
-  // The engine's activity list carries the mode adjustments: in PLANNED (Programlı)
-  // mode breaks whose allowance flex spent are shortened and the rest of the day
-  // slides earlier; in FLEX mode break rows are removed entirely (their windows are
-  // absorbed into the surrounding work). Breaks are spent only from the flex pool
-  // card above, which still reads the raw template.
+  // The engine's activity list carries the planned-mode adjustments (kaydırma /
+  // duraklatma), so it is preferred over a plain re-sort of the raw template.
   const sortedDisp = mode === 'myshift' && activityList && activityList.length > 0 ? activityList : sorted
   const completedCount = sortedDisp.filter(a => (activitiesStatus[a.id] || 'future') === 'completed').length
-  const breakPoolSecs = sorted.filter(a => a.isBreak).reduce((sum, a) => sum + (a.duration || 0), 0) * 60
-  // Per-scheduled-break allowances — each "Mola mı?" activity owns its own minutes.
-  const breakPoolByBreakId: Record<string, number> = {}
-  for (const a of sorted) {
-    if (a.isBreak) breakPoolByBreakId[a.id] = Math.max(0, (a.duration || 0) * 60)
-  }
-
-  // Breaks already consumed while in PLANNED mode are carried into the flex pool, so a
-  // mid-day switch to Esnek doesn't refund breaks the plan clock already gave. Every
-  // break the clock has touched is included — fully finished windows carry their whole
-  // allowance, a break you're currently ON carries just the minutes already elapsed.
-  const planSpentCarry: Record<string, number> = {}
-  for (const a of sorted) {
-    if (!a.isBreak) continue
-    const spent = planUsedBy[a.id] ?? 0
-    if (spent > 0) {
-      planSpentCarry[a.id] = Math.min((a.duration || 0) * 60, spent)
-    }
-  }
 
   // After a late start / pause the whole schedule moves forward: reflect the NEW
   // times here so "where am I / what's next" stays truthful at a glance.
@@ -136,114 +104,6 @@ export default function Timeline() {
         </div>
       )}
 
-      {/* Flexible-break control — MyShift only. Scheduled break minutes are pooled and
-          spent at will (Esnek) instead of running on a set clock (Programlı). */}
-      {mode === 'myshift' && (
-        <div className="flex-shrink-0 mb-2">
-          <div className="flex p-0.5 rounded-lg bg-slate-800/60 border border-white/5 text-[11px] font-semibold">
-            <button
-              onClick={disableFlex}
-              disabled={!flexMode}
-              className={`flex-1 px-3 py-1.5 rounded-md transition-colors ${
-                !flexMode ? 'accent-solid text-white' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {t('timelineUI.breakModePlanned')}
-            </button>
-            <button
-              onClick={() => enableFlex(breakPoolSecs, breakPoolByBreakId, planSpentCarry)}
-              disabled={flexMode || isPaused || isShiftFinished}
-              title={breakPoolSecs === 0 ? t('timelineUI.flexNoBreaks') : undefined}
-              className={`flex-1 px-3 py-1.5 rounded-md transition-colors ${
-                flexMode ? 'accent-solid text-white' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {t('timelineUI.breakModeFlex')}
-            </button>
-          </div>
-
-          {flexMode && (() => {
-            const activeBreak = flexActiveId ? sorted.find(a => a.id === flexActiveId) ?? null : null
-            return (
-              <div className="mt-2 p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-semibold text-slate-400">{t('timelineUI.flexPoolLabel')}</span>
-                  <span className={`text-[10px] font-mono ${flexRemainingSecs === 0 ? 'text-slate-500' : 'text-emerald-300'}`}>
-                    {t('timelineUI.flexRemaining', { time: formatRemaining(flexRemainingSecs, false, 'sa', 'dk', true) })}
-                  </span>
-                </div>
-                <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden mt-2 border border-white/5">
-                  <div
-                    className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-500"
-                    style={{ width: `${flexTotalSecs > 0 ? Math.min(100, (flexUsedSecs / flexTotalSecs) * 100) : 0}%` }}
-                  />
-                </div>
-                <p className="text-[10px] text-slate-500 mt-2 min-w-0 truncate">
-                  {flexRunning && activeBreak ? (
-                    <span className="text-emerald-300">
-                      {activeBreak.icon} {activeBreak.name} {t('timelineUI.flexRunningBreak')}
-                    </span>
-                  ) : (
-                    t('timelineUI.flexDesc')
-                  )}
-                </p>
-                {flexOverage && (
-                  <p className="text-[10px] text-amber-300 font-semibold mt-1 animate-pulse">
-                    🔥 {t('timelineUI.flexOverageNote')}
-                  </p>
-                )}
-                {/* Per-break breakdown — each scheduled break's pool has how much left (incl. what
-                    the plan already consumed). These chips ARE the start/stop controls:
-                    click a break to spend it (☕), click the running one to end it (⏹). */}
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {sorted.filter(a => a.isBreak).map(a => {
-                    const rem = flexRemainingMap[a.id] ?? 0
-                    const runningHere = flexActiveId === a.id && flexRunning
-                    const blocked = flexRunning && flexActiveId !== null && !runningHere
-                    const spent = rem <= 0 && !runningHere
-                    return (
-                      <button
-                        key={a.id}
-                        disabled={blocked || spent}
-                        onClick={() => (runningHere ? flexStopBreak() : flexStartBreak(a.id, Math.round(effectiveSecs)))}
-                        title={`${a.name}: ${runningHere
-                          ? flexOverage
-                            ? `🔥 ${t('timelineUI.flexOverageNote')}`
-                            : `${t('timelineUI.flexEndBreak')} — ${t('timelineUI.flexStartBreak')} ile durur`
-                          : spent
-                            ? t('timelineUI.flexDoneBadge')
-                            : `${t('timelineUI.flexStartBreak')} · ${t('timelineUI.flexLeft')} ${formatRemaining(rem, false, 'sa', 'dk', true)}`}`}
-                        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[9px] font-mono border transition-colors ${
-                          runningHere
-                            ? flexOverage
-                              ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 animate-pulse'
-                              : 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
-                            : blocked || spent
-                            ? 'bg-slate-800/40 border-white/5 text-slate-500 cursor-not-allowed'
-                            : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 cursor-pointer hover:bg-emerald-500/25 hover:border-emerald-400 active:scale-95'
-                        }`}
-                      >
-                        <span>{a.icon}</span>
-                        <span className="max-w-24 truncate">{a.name}</span>
-                        <span className="whitespace-nowrap">
-                          {runningHere
-                            ? flexOverage
-                              ? `🔥 ${t('timelineUI.flexOvertimeBadge')}`
-                              : `⏹ ${formatRemaining(rem, false, 'sa', 'dk', true)} ${t('timelineUI.flexLeft')}`
-                            : spent
-                            ? `✔ ${t('timelineUI.flexDoneBadge')}`
-                            : `${formatRemaining(rem, false, 'sa', 'dk', true)} ${t('timelineUI.flexLeft')}`}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })()}
-        </div>
-      )}
-
       {/* Activity list */}
       <div className="relative flex-1 min-h-0">
         <div ref={scrollRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto flex flex-col gap-1.5 pr-8">
@@ -251,17 +111,13 @@ export default function Timeline() {
             const status = activitiesStatus[act.id] || 'future'
             const isCurrent = status === 'active'
             const isCompleted = status === 'completed'
-            // Flexible mode: how many seconds this break still has on its own
-            // allowance. A break is "done" once this hits zero, not on first use.
-            const flexRem = flexMode && act.isBreak ? flexRemainingMap[act.id] ?? 0 : 0
-            const flexRunningHere = flexMode && act.isBreak && flexActiveId === act.id && flexRunning
-            // Planned mode: a break that flex spending shortened or the plan already
-            // consumed shows its remaining allowance — the synced ledger countdown.
-            const planBreakRem = !flexMode && act.isBreak && mode === 'myshift'
-              ? flexRemainingMap[act.id] ?? (act.duration || 0) * 60
+            // Planned mode: a break the plan clock already consumed shows its
+            // remaining allowance — the synced ledger countdown.
+            const planBreakRem = mode === 'myshift' && act.isBreak
+              ? planRemainingMap[act.id] ?? (act.duration || 0) * 60
               : null
-            const planBreakTouched = !flexMode && act.isBreak && mode === 'myshift'
-              ? ((flexUsedBy[act.id] ?? 0) + (planUsedBy[act.id] ?? 0)) > 0
+            const planBreakTouched = mode === 'myshift' && act.isBreak
+              ? (planUsedBy[act.id] ?? 0) > 0
               : false
 
             return (
@@ -283,13 +139,6 @@ export default function Timeline() {
 
                 {/* Icon */}
                 <span className="text-sm flex-shrink-0 leading-none w-5 text-center">{act.icon}</span>
-
-                {/* Pooled-break badge: in flexible mode a scheduled break that still has
-                    time left is free time — clickable to spend. Once fully consumed (or
-                    running) the badge drops; a partially used break keeps it. */}
-                {flexMode && act.isBreak && !flexRunningHere && flexRem > 0 && (
-                  <span className="text-[10px] leading-none flex-shrink-0" title={t('timelineUI.flexPoolBadge')}>🔓</span>
-                )}
 
                 {/* Name */}
                 <span className={`text-xs font-medium truncate flex-1 min-w-0 ${
@@ -322,9 +171,9 @@ export default function Timeline() {
                   {act.duration}dk
                 </span>
 
-                {/* Planned-mode sync chip — flex spending shortened this break's window
-                    (07:30–07:45 → 07:30–07:35) and/or the plan already consumed some of
-                    it; the remaining shows what's still unused from the shared ledger. */}
+                {/* Planned-mode sync chip — the plan already consumed some of this
+                    break's window; the remaining shows what's still unused from
+                    the shared ledger. */}
                 {planBreakTouched && (
                   <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap ${
                     (planBreakRem ?? 0) <= 0
@@ -332,57 +181,9 @@ export default function Timeline() {
                       : 'bg-sky-500/15 text-sky-300'
                   }`}>
                     {(planBreakRem ?? 0) <= 0
-                      ? `✔ ${t('timelineUI.flexDoneBadge')}`
-                      : `${formatRemaining(planBreakRem ?? 0)} ${t('timelineUI.flexLeft')}`}
+                      ? `✔ ${t('timelineUI.planDoneBadge')}`
+                      : `${formatRemaining(planBreakRem ?? 0)} ${t('timelineUI.planLeft')}`}
                   </span>
-                )}
-
-                {/* Flexible-break interaction — scheduled "Mola mı?" chips become the
-                    spendable pool. The running break shows its live remaining time (and
-                    AŞIM once its allowance runs out). Controls stack under the remaining
-                    chip so rows stay narrow; fixed chip width + a reserved button slot
-                    keep the list from shifting as the countdown ticks. Ending a break
-                    only consumes the minutes actually used — the rest stay available
-                    for another round; a break is locked only once fully spent. */}
-                {flexMode && act.isBreak && (
-                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    <span className={`h-5 min-w-[4.5rem] px-1.5 flex items-center justify-center text-[9px] font-mono rounded whitespace-nowrap ${
-                      flexRunningHere
-                        ? flexOverage
-                          ? 'bg-amber-500/15 text-amber-300 font-semibold animate-pulse'
-                          : 'bg-emerald-500/15 text-emerald-300'
-                        : flexRem <= 0
-                        ? 'bg-white/5 text-slate-500'
-                        : 'bg-slate-800/60 text-slate-300'
-                    }`}>
-                      {flexRunningHere
-                        ? flexOverage
-                          ? `🔥 ${t('timelineUI.flexOvertimeBadge')}`
-                          : `${formatRemaining(flexRem)} ${t('timelineUI.flexLeft')}`
-                        : flexRem <= 0
-                        ? `✔ ${t('timelineUI.flexDoneBadge')}`
-                        : `${formatRemaining(flexRem)} ${t('timelineUI.flexLeft')}`}
-                    </span>
-                    <div className="h-6 flex items-center justify-end">
-                      {flexRunningHere ? (
-                        <button
-                          onClick={flexStopBreak}
-                          className="flex-shrink-0 px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-slate-200 font-semibold transition-colors whitespace-nowrap"
-                        >
-                          ⏹ {t('timelineUI.flexEndBreak')}
-                        </button>
-                      ) : flexRem > 0 ? (
-                        <button
-                          onClick={() => flexStartBreak(act.id, Math.round(effectiveSecs))}
-                          className="flex-shrink-0 px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-semibold transition-colors shadow-md shadow-emerald-500/20"
-                        >
-                          ☕ {t('timelineUI.flexStartBreak')}
-                        </button>
-                      ) : (
-                        <span className="block" aria-hidden />
-                      )}
-                    </div>
-                  </div>
                 )}
               </div>
             )

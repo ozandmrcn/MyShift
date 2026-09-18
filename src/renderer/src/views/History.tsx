@@ -246,16 +246,6 @@ export default function History() {
                           📋 {e.detail.templateName}
                         </span>
                       )}
-                      {e.detail.flexUsedSecs !== undefined && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-300" title={t('history.flexUsed')}>
-                          🧘 {t('history.flexUsed')}: {formatRemaining(e.detail.flexUsedSecs)}
-                        </span>
-                      )}
-                      {e.detail.flexRemainingSecs !== undefined && e.detail.flexRemainingSecs > 0 && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-sky-300">
-                          {t('history.flexLeft')}: {formatRemaining(e.detail.flexRemainingSecs)}
-                        </span>
-                      )}
                       {(e.detail.breakLog?.length ?? 0) > 0 && (
                         <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-400">
                           🧾 {e.detail.breakLog.length} {t('history.breakDetail')}

@@ -29,8 +29,8 @@ function daysColl(uid: string) {
 }
 
 /** Firestore rejects `undefined` anywhere in a written document. Legacy or
- *  optional fields (e.g. `detail.flexUsedSecs` from before flex existed) can be
- *  undefined, so scrub them recursively before any write. Never throws. */
+ *  optional fields can be undefined, so scrub them recursively before any write.
+ *  Never throws. */
 export function sanitizeForFirestore<T>(value: T): T {
   if (value === undefined || value === null || typeof value !== 'object') return value
   if (Array.isArray(value)) {

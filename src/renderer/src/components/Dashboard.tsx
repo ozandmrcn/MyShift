@@ -324,6 +324,7 @@ export default function Dashboard() {
   const updateSettings = useShiftStore((s) => s.updateSettings)
   const settings = useShiftStore((s) => s.settings)
   const payPaused = useShiftStore((s) => s.payPaused)
+  const payShiftOffset = useShiftStore((s) => s.payShiftOffset)
   const runningBreak = useShiftStore((s) => s.runningBreak)
   const stopBreak = useShiftStore((s) => s.stopBreak)
   const breakUsage = useShiftStore((s) => s.breakUsage)
@@ -340,6 +341,8 @@ export default function Dashboard() {
   const [greetShown, setGreetShown] = useState(false)
   const [confirmPause, setConfirmPause] = useState(false)
   const [confirmResume, setConfirmResume] = useState(false)
+  // Manual shift-to-activity selector
+  const [shiftModalOpen, setShiftModalOpen] = useState(false)
 
   // The prompt must appear fresh each new day
   useEffect(() => { setGreetShown(false) }, [currentDateStr])
@@ -374,8 +377,8 @@ export default function Dashboard() {
   const realSecs = effectiveSecs
   const realClockSecs = timeToSeconds(currentTimeSecs)
   // For Pay mode: use settings times instead of template
-  const payShiftStartSecs = mode === 'pay' ? timeToSeconds(`${settings.payShiftStart}:00`) : 0
-  const payShiftEndSecs = mode === 'pay' ? timeToSeconds(`${settings.payShiftEnd}:00`) : 0
+  const payShiftStartSecs = mode === 'pay' ? timeToSeconds(`${settings.payShiftStart}:00`) + payShiftOffset : 0
+  const payShiftEndSecs = mode === 'pay' ? timeToSeconds(`${settings.payShiftEnd}:00`) + payShiftOffset : 0
   const effectiveShiftEndSecs = mode === 'pay' ? payShiftEndSecs : (sortedActivities.length ? timeToSeconds(sortedActivities[sortedActivities.length - 1].endTime) : 0)
   const effectiveShiftStartSecs = mode === 'pay' ? payShiftStartSecs : (sortedActivities.length ? timeToSeconds(sortedActivities[0].startTime) : 0)
 
@@ -451,13 +454,35 @@ export default function Dashboard() {
     setTimeOffset(targetSecs - timeToSeconds(currentTimeSecs) + activeShiftSecs)
   }
   const handleConfirmPending = () => {
-    if (pendingActivity) confirmActivity(pendingActivity.id)
+    if (pendingActivity) {
+      confirmActivity(pendingActivity.id)
+      // After confirming an activity, any breaks whose windows have passed
+      // according to the schedule clock must be marked consumed.
+      if (activeTemplate && activeTemplate.activities.length > 0) {
+        const planClockSecs = Math.round((effectiveSecs - timeOffset + 86400) % 86400)
+        const map: Record<string, number> = {}
+        for (const act of activeTemplate.activities) {
+          if (!act.isBreak) continue
+          const st = timeToSeconds(`${act.startTime}:00`)
+          const en = timeToSeconds(`${act.endTime}:00`)
+          const effDur = (act.duration || 0) * 60
+          let used = 0
+          if (planClockSecs >= en) used = effDur
+          else if (planClockSecs >= st) used = planClockSecs - st
+          if (used > 0) map[act.id] = used
+        }
+        useShiftStore.getState().syncPlanUsed(map)
+      }
+    }
   }
 
   // Late start / "Orada mısın?" — shift today's schedule forward so the first
   // activity effectively begins right now (template and planned duration untouched).
   const handleGreetYes = () => {
     setGreetShown(true)
+    // Clear any leftover planned-break consumption from a previous session/day
+    // so that a fresh shift with a late start never shows stale "tükendi" breaks.
+    useShiftStore.getState().syncPlanUsed({})
     if (realClockSecs > effectiveShiftStartSecs) setDayShift(realClockSecs - effectiveShiftStartSecs)
   }
   const handleGreetNotYet = () => setGreetShown(true)
@@ -619,11 +644,26 @@ export default function Dashboard() {
               {mode === 'chrono' ? t('dashboardUI.shiftChrono') : mode === 'pay' ? t('dashboardUI.shiftPay') : activeTemplate ? activeTemplate.name : t('dashboardUI.shiftNone')}
             </h3>
             {mode === 'pay' && (
-              <p className="text-xs text-slate-400 mt-0.5 truncate">
-                {durationMode
-                  ? `${t('dashboardUI.payTarget')}: ${settings.payDurationMin} ${t('times.minShort')} • ${t('dashboardUI.payWorked')}: ${formatRemaining(payWorkSecs)}${payPaused ? ` • ⏸ ${t('dashboardUI.payPausedLabel')}` : ''}${breakSeconds > 0 ? ` • ${t('dashboardUI.chronoBreakLabel')}: ${formatRemaining(breakSeconds)}` : ''}`
-                  : `${settings.payShiftStart} - ${settings.payShiftEnd} • ${Object.values(breakUsage).reduce((a, b) => a + (b ?? 0), 0)} ${t('dashboardUI.payBreakUsed')}`}
-              </p>
+              <div className="flex flex-col gap-1 mt-1">
+                <p className="text-xs text-slate-400 truncate">
+                  {durationMode
+                    ? `${t('dashboardUI.payTarget')}: ${settings.payDurationMin} ${t('times.minShort')} • ${t('dashboardUI.payWorked')}: ${formatRemaining(payWorkSecs)}${payPaused ? ` • ⏸ ${t('dashboardUI.payPausedLabel')}` : ''}${breakSeconds > 0 ? ` • ${t('dashboardUI.chronoBreakLabel')}: ${formatRemaining(breakSeconds)}` : ''}`
+                    : `${settings.payShiftStart} - ${settings.payShiftEnd} • ${Object.values(breakUsage).reduce((a, b) => a + (b ?? 0), 0)} ${t('dashboardUI.payBreakUsed')}`}
+                </p>
+                {!durationMode && (
+                  <button
+                    onClick={() => {
+                      const nowSec = timeToSeconds(new Date().toTimeString().split(' ')[0])
+                      const startSec = timeToSeconds(`${settings.payShiftStart}:00`)
+                      const offset = Math.round(nowSec - startSec)
+                      useShiftStore.getState().setPayShiftOffset(offset)
+                    }}
+                    className="self-start inline-flex items-center gap-1 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] px-2 py-0.5 rounded-md font-semibold transition-colors"
+                  >
+                    ⏩ {t('dashboardUI.payShiftToNow')}
+                  </button>
+                )}
+              </div>
             )}
             {mode === 'chrono' && (
               <p className="text-xs text-slate-400 mt-0.5 truncate">
@@ -676,6 +716,42 @@ export default function Dashboard() {
                   >
                     ⏩ {t('dashboardUI.greetYes')}
                   </button>
+                  <button
+                    onClick={() => { setShiftModalOpen(true) }}
+                    className="inline-flex items-center gap-1.5 bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] px-3 py-1.5 rounded-lg font-semibold transition-colors shadow-md shadow-indigo-500/20"
+                    title={t('dashboardUI.shiftSelectTitle')}
+                  >
+                    ↻ {t('dashboardUI.shiftSelectLabel')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Manual shift-to-activity modal */}
+            {shiftModalOpen && activeTemplate && (
+              <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
+                <div className="bg-slate-900/95 border border-white/10 rounded-2xl shadow-2xl shadow-black/50 max-w-lg w-full p-5 animate-in slide-in-from-bottom-4 duration-300">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-bold text-white">↻ {t('dashboardUI.shiftSelectTitle')}</h3>
+                    <button onClick={() => setShiftModalOpen(false)} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mb-4">{t('dashboardUI.shiftSelectDesc')}</p>
+                  <div className="flex flex-wrap gap-2 max-h-72 overflow-y-auto pr-1">
+                    {sortedActivities.map((a) => (
+                      <button
+                        key={a.id}
+                        onClick={() => {
+                          useShiftStore.getState().shiftToActivity(a.id, activeTemplate.activities)
+                          setShiftModalOpen(false)
+                        }}
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-semibold border transition-all duration-200 shadow-sm bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white hover:scale-[1.02]"
+                      >
+                        <span>{a.icon}</span>
+                        <span className="max-w-28 truncate">{a.name}</span>
+                        <span className="text-[9px] text-slate-500 font-mono">{a.startTime}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
