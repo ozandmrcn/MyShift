@@ -1026,7 +1026,7 @@ export function useLiveShiftEngine() {
       else if (planClockSecs >= st) used = planClockSecs - st
       if (used > 0) map[act.id] = used
     }
-    if (Object.keys(map).length > 0) syncFlexUsedFromPlan(map)
+    syncFlexUsedFromPlan(map)
   }, [settings.mode, flexOn, myShiftActList, effectiveSecs, timeOffset, syncFlexUsedFromPlan, time])
 
   // Push live status to the tray tooltip (refreshed ~once per second via timeString)

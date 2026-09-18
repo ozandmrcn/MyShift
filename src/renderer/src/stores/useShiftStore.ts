@@ -1233,10 +1233,17 @@ const { pool, byId } = rebuildFlexPool(s.templates, s.settings.birthday)
   syncFlexUsedFromPlan: (usedBy) => {
     const s = get()
     const day = todayStr()
-    // Write plan consumption whether flex ran today or not:
-    // if the user switches from PLAN to FLEX later, the carried spend must be accurate.
-    // (Flex mode's own consumption is tracked separately via flexStart/FlexStop,
-    // this is for the carrot when a planned window passed and later flex runs.)
+    const keys = Object.keys(usedBy)
+    // When no breaks have been touched by the plan clock (map empty), clear any
+    // leftover consumption from a previous session/day so a fresh shift never
+    // shows stale "tükendi" breaks.
+    if (keys.length === 0) {
+      if (Object.keys(s.planUsedBy).length > 0) {
+        set({ planUsedBy: {} })
+        persistIdle()
+      }
+      return
+    }
     const merged = { ...s.planUsedBy }
     let changed = false
     for (const [k, v] of Object.entries(usedBy)) {
