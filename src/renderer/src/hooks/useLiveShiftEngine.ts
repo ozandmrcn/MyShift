@@ -1009,7 +1009,12 @@ export function useLiveShiftEngine() {
     const list = myShiftActList
     if (list.length === 0) return
     lastPlanWrite.current = nowMs
-    const effSecs = effectiveSecs
+    // Plan-clock = effective time WITHOUT the manual kaydırma offset. A kaydırma is a
+    // deliberate skip-forward: the user did not pass through the breaks behind it, so
+    // those windows must NOT be marked consumed. What DID pass is the real elapsed
+    // day (minus pauses, plus a late-start dayShift, which legitimately moves the
+    // schedule). EffectiveSecs alone would count every break past the shifted time.
+    const planClockSecs = Math.round((effectiveSecs - timeOffset + 86400) % 86400)
     const map: Record<string, number> = {}
     for (const act of list) {
       if (!act.isBreak) continue
@@ -1017,12 +1022,12 @@ export function useLiveShiftEngine() {
       const en = timeToSeconds(`${act.endTime}:00`)
       const effDur = act.duration * 60
       let used = 0
-      if (effSecs >= en) used = effDur
-      else if (effSecs >= st) used = effSecs - st
+      if (planClockSecs >= en) used = effDur
+      else if (planClockSecs >= st) used = planClockSecs - st
       if (used > 0) map[act.id] = used
     }
     if (Object.keys(map).length > 0) syncFlexUsedFromPlan(map)
-  }, [settings.mode, flexOn, myShiftActList, effectiveSecs, syncFlexUsedFromPlan, time])
+  }, [settings.mode, flexOn, myShiftActList, effectiveSecs, timeOffset, syncFlexUsedFromPlan, time])
 
   // Push live status to the tray tooltip (refreshed ~once per second via timeString)
   useEffect(() => {
